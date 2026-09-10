@@ -6,6 +6,7 @@ import { useStoreProbe } from './hooks/useStoreProbe'
 import { loadToken } from './lib/token'
 import { Overview2D } from './panels/Overview2D'
 import { ParamsPanel } from './panels/ParamsPanel'
+import { ReplayBar } from './panels/ReplayBar'
 import { TokenGate } from './panels/TokenGate'
 import { TopBar } from './panels/TopBar'
 
@@ -33,6 +34,8 @@ export function App() {
   return (
     <div className="app">
       <TopBar send={send} stackd={stackd} />
+      {/* replay モードでのみ描かれる（gateway が他モードでは送らない）。 */}
+      <ReplayBar send={send} />
       <div className="layout">
         <Overview2D send={send} />
         <ParamsPanel send={send} />

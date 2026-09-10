@@ -361,3 +361,58 @@ describe('仮想障害物', () => {
     expect(state.obstacles[0].frameId).toBe('map')
   })
 })
+
+describe('再生位置', () => {
+  const frame = (over: Record<string, unknown> = {}) => ({
+    type: 'replay',
+    bag: '/home/systemlab/whill_platform/bags/2026-07-31-campus',
+    elapsed: 12.5,
+    total: 235.08,
+    rate: 1.0,
+    playing: true,
+    finished: false,
+    stamp: 100,
+    ...over,
+  })
+
+  it('replay モード以外では null のまま', () => {
+    // gateway は replay 以外で送ってこない。null を 0 秒に潰すと
+    // 「再生していない」と「先頭に居る」が区別できなくなる。
+    expect(emptyFrameState().replay).toBeNull()
+  })
+
+  it('位置と速度を取り込む', () => {
+    const state = apply(emptyFrameState(), frame())
+    expect(state.replay).toEqual({
+      bag: '/home/systemlab/whill_platform/bags/2026-07-31-campus',
+      elapsed: 12.5,
+      total: 235.08,
+      rate: 1.0,
+      playing: true,
+      finished: false,
+      stamp: 100,
+    })
+  })
+
+  it('不明な値は null のまま持つ', () => {
+    // metadata.yaml を読めなかったとき。0 で埋めると進捗バーが
+    // 「先頭に居る」と嘘をつく。
+    const state = apply(emptyFrameState(), frame({ total: null, rate: null, bag: null }))
+    expect(state.replay?.total).toBeNull()
+    expect(state.replay?.rate).toBeNull()
+    expect(state.replay?.bag).toBeNull()
+  })
+
+  it('一時停止と再生終了を別に持つ', () => {
+    const paused = apply(emptyFrameState(), frame({ playing: false }))
+    expect(paused.replay).toMatchObject({ playing: false, finished: false })
+
+    const done = apply(emptyFrameState(), frame({ playing: false, finished: true }))
+    expect(done.replay).toMatchObject({ playing: false, finished: true })
+  })
+
+  it('受信時刻を記録する', () => {
+    const state = apply(emptyFrameState(), frame(), 4242)
+    expect(state.receivedAt.replay).toBe(4242)
+  })
+})

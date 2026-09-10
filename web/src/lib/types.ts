@@ -116,6 +116,28 @@ export interface VirtualObstacle {
   radius: number
 }
 
+/** bag 再生の位置と速度。**replay モードでのみ届く。**
+ *
+ * `null` が「不明」を意味する。`total` が null なら metadata.yaml を読めて
+ * いないということで、進捗バーは出せない（0 % で描くと「先頭に居る」と
+ * 誤読する）。
+ */
+export interface ReplayFrame {
+  /** 再生中の bag のパス。metadata が読めなければ null。 */
+  bag: string | null
+  /** bag の先頭からの経過秒。 */
+  elapsed: number | null
+  /** bag 全体の長さ（秒）。 */
+  total: number | null
+  /** **観測した**再生速度。指令値ではない。 */
+  rate: number | null
+  /** `/clock` が進んでいるか。一時停止でも再生終了でも false。 */
+  playing: boolean
+  /** 終端まで再生し終えたか。一時停止と区別するために持つ。 */
+  finished: boolean
+  stamp: number
+}
+
 export interface PathFrame {
   frameId: string
   points: { x: number; y: number }[]

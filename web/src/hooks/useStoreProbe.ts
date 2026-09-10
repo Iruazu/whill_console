@@ -36,6 +36,14 @@ export function useStoreProbe(): void {
           mode: state.status.mode,
           clients: state.status.clients,
         },
+        // replay 以外では null。「再生していない」ことも読めるようにする。
+        replay: state.replay && {
+          elapsed: state.replay.elapsed,
+          total: state.replay.total,
+          rate: state.replay.rate,
+          playing: state.replay.playing,
+          finished: state.replay.finished,
+        },
         tfFrames: state.tf ? Object.keys(state.tf.parents).length : 0,
         unhandled: state.unhandledFrames,
       }

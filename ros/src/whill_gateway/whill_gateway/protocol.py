@@ -11,9 +11,10 @@ Web 側の対の実装は `web/src/lib/types.ts`。片方だけ変えないこ�
 ## 方向
 
   client → server : auth, subscribe, param_set, preset_apply, manual_vel,
-                    heartbeat, estop, virtual_obstacles
+                    heartbeat, estop, virtual_obstacles, replay_control
   server → client : hello, status, error, params, param_changed,
-                    costmap, costmap_update, pose, path, tf, diagnostics, image
+                    costmap, costmap_update, pose, path, tf, diagnostics,
+                    image, replay
 
 ## 認証
 
@@ -41,12 +42,30 @@ MSG_HEARTBEAT = 'heartbeat'
 MSG_ESTOP = 'estop'
 MSG_VIRTUAL_OBSTACLES = 'virtual_obstacles'
 MSG_PING = 'ping'
+MSG_REPLAY_CONTROL = 'replay_control'
+"""bag 再生の一時停止・再開・速度変更。**シークは含まない**（ADR-0004）。"""
 
 CLIENT_MESSAGES = frozenset({
     MSG_AUTH, MSG_SUBSCRIBE, MSG_PARAM_SET, MSG_PRESET_APPLY,
     MSG_MANUAL_VEL, MSG_HEARTBEAT, MSG_ESTOP, MSG_VIRTUAL_OBSTACLES,
-    MSG_PING,
+    MSG_PING, MSG_REPLAY_CONTROL,
 })
+
+REPLAY_ACTIONS = frozenset({'pause', 'resume', 'set_rate'})
+"""`replay_control` で受け付ける操作。
+
+`seek` は入れない。入れないことを**明示的に書いておく**ため定数にしている。
+理由は ADR-0004。
+"""
+
+MIN_REPLAY_RATE = 0.1
+MAX_REPLAY_RATE = 10.0
+"""再生速度の範囲。
+
+下限より遅いと「止まっているのか極端に遅いのか」が `/clock` の停止判定
+（1 秒）と区別できなくなる。上限より速いと gateway のレート制限より
+bag のほうが速くなり、画面が飛び飛びになるだけで見る意味が無い。
+"""
 
 # ---- server → client -------------------------------------------------------
 
@@ -70,11 +89,18 @@ MSG_OBSTACLES = 'obstacles'
 client → server の `virtual_obstacles` は「操作」で、こちらは「状態」。
 同じ名前にすると、フレームを見たときにどちらの向きか分からなくなる。
 """
+MSG_REPLAY = 'replay'
+"""bag 再生の位置と速度。replay モードでのみ流れる。
+
+他のモードで空フレームを流さないこと。「再生していない」と「再生位置が
+0 秒」を UI が区別できなくなる。
+"""
 
 SERVER_MESSAGES = frozenset({
     MSG_HELLO, MSG_STATUS, MSG_ERROR, MSG_PARAMS, MSG_PARAM_CHANGED,
     MSG_COSTMAP, MSG_COSTMAP_UPDATE, MSG_POSE, MSG_PATH, MSG_SCAN,
     MSG_TF, MSG_DIAGNOSTICS, MSG_IMAGE, MSG_PONG, MSG_OBSTACLES,
+    MSG_REPLAY,
 })
 """server → client のフレーム一覧。
 
@@ -89,7 +115,7 @@ PRE_AUTH_MESSAGES = frozenset({MSG_HELLO, MSG_ERROR})
 # 「黙って何も届かない」に変えないため）。
 STREAMS = frozenset({
     MSG_STATUS, MSG_PARAMS, MSG_COSTMAP, MSG_POSE, MSG_PATH, MSG_SCAN,
-    MSG_TF, MSG_DIAGNOSTICS, MSG_IMAGE, MSG_OBSTACLES,
+    MSG_TF, MSG_DIAGNOSTICS, MSG_IMAGE, MSG_OBSTACLES, MSG_REPLAY,
 })
 
 # フレーム種別 → それが属するストリーム。
@@ -115,6 +141,9 @@ DEFAULT_STREAMS = frozenset({
     # 俯瞰図に重ねて描くものなので既定で流す。置いたまま忘れられるのが
     # 一番まずいので、繋いだら必ず見えるようにする。
     MSG_OBSTACLES,
+    # replay モードでしか流れないので、既定に入れておいて実害が無い。
+    # 逆に外すと「再生しているのに位置が出ない」を購読設定で作れてしまう。
+    MSG_REPLAY,
 })
 """何も指定せずに繋いだときに流れるもの。画像と tf は明示的に要求させる。"""
 

@@ -7,6 +7,7 @@ import type {
   ParamSpec,
   PathFrame,
   PoseFrame,
+  ReplayFrame,
   ScanFrame,
   StackStatus,
   TfSummary,
@@ -39,6 +40,9 @@ export interface FrameState {
   /** いま置かれている仮想障害物。gateway が全量で配る。 */
   obstacles: VirtualObstacle[]
   status: StackStatus | null
+  /** bag 再生の位置。replay モード以外では gateway が送ってこないので
+   *  null のまま。**null を「0 秒」に潰さないこと。** */
+  replay: ReplayFrame | null
   params: ParamSpec[]
   /** registry と実ノードの値がずれているもの。異常なので隠さない。 */
   mismatches: { key: string; registry: unknown; live: unknown }[]
@@ -71,6 +75,7 @@ export const emptyFrameState = (): FrameState => ({
   scan: null,
   obstacles: [],
   status: null,
+  replay: null,
   params: [],
   mismatches: [],
   unreachable: [],
@@ -89,6 +94,10 @@ export const PARAM_CHANGE_LIMIT = 100
 
 const num = (value: unknown, fallback = 0): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : fallback
+
+/** 数値か、不明を表す null。既定値で埋めないほうがよい場所に使う。 */
+const opt = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null
 
 const str = (value: unknown, fallback = ''): string =>
   typeof value === 'string' ? value : fallback
@@ -260,6 +269,25 @@ export function applyFrame(
             preset: typeof frame.preset === 'string' ? frame.preset : null,
             latencyMs:
               typeof frame.latency_ms === 'number' ? frame.latency_ms : null,
+            stamp: num(frame.stamp),
+          },
+        },
+      }
+
+    case 'replay':
+      return {
+        handled: true,
+        state: {
+          ...state,
+          receivedAt: stamp,
+          replay: {
+            bag: typeof frame.bag === 'string' ? frame.bag : null,
+            // **null を 0 に潰さない。** 不明と「先頭に居る」は別のこと。
+            elapsed: opt(frame.elapsed),
+            total: opt(frame.total),
+            rate: opt(frame.rate),
+            playing: frame.playing === true,
+            finished: frame.finished === true,
             stamp: num(frame.stamp),
           },
         },
