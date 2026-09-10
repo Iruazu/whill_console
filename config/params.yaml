@@ -508,6 +508,20 @@ params:
     description: WebSocket へ costmap を流す上限レート。実機PC の CPU 負荷は実機検証待ち。
 
   - node: whill_gateway
+    name: costmap_max_cells
+    type: int
+    default: 250000
+    range: {min: 10000, max: 4000000, step: 10000}
+    unit: cells
+    live: true
+    safety_class: none
+    description: >-
+      1 フレームで送る costmap のセル数の上限。超えたら間引く。実機のキャンパス
+      地図は 6640x6295 = 4180 万セルあり、そのまま送ると JSON が約 8 MB になって
+      ブラウザが受け取れずに接続ごと切れる。俯瞰図は 1000 px 程度の canvas に
+      描くので 500x500 もあれば足りる。細かいところは local costmap で見る。
+
+  - node: whill_gateway
     name: pose_publish_rate
     type: double
     default: 10.0

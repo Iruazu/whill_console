@@ -127,6 +127,7 @@ export function applyFrame(
               originY: num(frame.origin_y),
               rle: (frame.rle as number[]) ?? [],
               ratio: num(frame.ratio),
+              decimation: num(frame.decimation, 1),
               stamp: num(frame.stamp),
               seq: num(frame.seq),
             }),

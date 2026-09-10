@@ -89,22 +89,87 @@ def compression_ratio(rle: list[int], cell_count: int) -> float:
     return len(rle) / cell_count
 
 
+DEFAULT_MAX_CELLS = 250_000
+"""1 フレームで送るセル数の上限。
+
+実機のキャンパス地図は **6640 x 6295 = 4180 万セル**（5 cm 解像度）で、
+RLE をかけても JSON が約 8 MB になる。ブラウザの WebSocket は既定で
+1〜4 MiB を超えるフレームを受け取らず、**接続ごと切れる**（replay モードで
+実際に踏んだ: 「gateway は動いているのに 1 通も届かない」）。
+
+俯瞰図は 1000 px 程度の canvas に描く。500x500 もあれば十分で、細かいところは
+local costmap（rolling window）で見る。全域の 5 cm 解像度は要らない。
+"""
+
+
+def decimate(cells: list[int], width: int, height: int,
+             factor: int) -> tuple[list[int], int, int]:
+    """`factor` x `factor` のブロックごとに 1 セルへ間引く。
+
+    **各ブロックの最大値を採る。** 平均だと細い壁が消える — 4180 万セルの
+    地図で 1 本の壁が消えれば、そこを通る経路が「通れる」ように見える。
+
+    未知 (-1) は最大値を採れば自然に扱える。ブロック内に既知の値が 1 つでも
+    あればそちらが勝ち、全部未知のときだけ -1 が残る。
+    """
+    if factor <= 1:
+        return list(cells), width, height
+
+    out_w = (width + factor - 1) // factor
+    out_h = (height + factor - 1) // factor
+    out: list[int] = [UNKNOWN] * (out_w * out_h)
+
+    for row in range(height):
+        out_row = row // factor
+        base = row * width
+        out_base = out_row * out_w
+        for col in range(width):
+            value = cells[base + col]
+            index = out_base + col // factor
+            if value > out[index]:
+                out[index] = value
+    return out, out_w, out_h
+
+
+def decimation_for(width: int, height: int, max_cells: int) -> int:
+    """セル数を `max_cells` 以下に収める間引き率。"""
+    total = width * height
+    if max_cells <= 0 or total <= max_cells:
+        return 1
+    factor = 1
+    while (width + factor - 1) // factor * ((height + factor - 1) // factor) > max_cells:
+        factor += 1
+    return factor
+
+
 def costmap_frame(*, scope: str, frame_id: str, resolution: float,
                   width: int, height: int, origin_x: float, origin_y: float,
-                  cells: list[int] | bytes, stamp: float, seq: int) -> dict[str, Any]:
-    """全量フレーム。接続直後の初期表示と、格子が張り替わったときの再同期に使う。"""
-    rle = encode_rle(cells)
+                  cells: list[int] | bytes, stamp: float, seq: int,
+                  max_cells: int = DEFAULT_MAX_CELLS) -> dict[str, Any]:
+    """全量フレーム。接続直後の初期表示と、格子が張り替わったときの再同期に使う。
+
+    大きすぎる格子は間引いて送る。**間引いたことをフレームに載せる**ので、
+    UI 側は「これは粗い絵だ」と分かる。黙って粗くすると、細かい障害物が
+    無いのか間引かれたのかが区別できない。
+    """
+    signed = [_as_signed(value) for value in cells]
+    factor = decimation_for(width, height, max_cells)
+    signed, out_w, out_h = decimate(signed, width, height, factor)
+
+    rle = encode_rle(signed)
     return {
         'type': 'costmap',
         'scope': scope,
         'frame_id': frame_id,
-        'resolution': resolution,
-        'width': width,
-        'height': height,
+        # 間引いたぶん 1 セルの実寸が広がる。原点は左下のままなので動かさない。
+        'resolution': resolution * factor,
+        'width': out_w,
+        'height': out_h,
         'origin_x': origin_x,
         'origin_y': origin_y,
         'rle': rle,
-        'ratio': round(compression_ratio(rle, width * height), 4),
+        'ratio': round(compression_ratio(rle, out_w * out_h), 4),
+        'decimation': factor,
         'stamp': stamp,
         'seq': seq,
     }

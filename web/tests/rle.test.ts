@@ -48,6 +48,7 @@ describe('costmap の部分更新', () => {
     originY: -1,
     rle: [0, 16],
     ratio: 0.125,
+    decimation: 1,
     stamp: 1,
     seq: 5,
   })
