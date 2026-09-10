@@ -98,3 +98,41 @@ def test_as_nested_builds_nav2_shape(registry):
 def test_every_robot_loads():
     for robot_id in ('cr2-01', 'cr2-02', 'cr2-03'):
         assert reg.load(robot_id).robot['robot_id'] == robot_id
+
+
+def test_ros_node_maps_costmaps_to_their_real_names(registry):
+    """registry のノード名は ROS のノード名とは限らない。
+
+    Nav2 の costmap は yaml 上 `local_costmap` だが実ノードは
+    `/local_costmap/local_costmap`。gateway が `ros2 param set` を出す先は
+    後者で、前者を使うと "Node not found" になる（実測で確認）。
+    """
+    assert registry.ros_node('local_costmap') == '/local_costmap/local_costmap'
+    assert registry.ros_node('global_costmap') == '/global_costmap/global_costmap'
+
+
+def test_ros_node_defaults_to_slash_prefixed(registry):
+    assert registry.ros_node('controller_server') == '/controller_server'
+    assert registry.ros_node('velocity_smoother') == '/velocity_smoother'
+
+
+def test_ros_node_for_key(registry):
+    key = 'local_costmap.inflation_layer.inflation_radius'
+    assert registry.ros_node_for_key(key) == '/local_costmap/local_costmap'
+
+
+def test_alias_to_unknown_node_is_rejected(tmp_path):
+    """存在しないノードへの別名は typo。黙って無視しない。"""
+    import shutil
+
+    import yaml
+
+    root = tmp_path / 'config'
+    shutil.copytree(reg.config_root(), root, symlinks=False)
+    path = root / 'params.yaml'
+    data = yaml.safe_load(path.read_text(encoding='utf-8'))
+    data['node_aliases']['no_such_node'] = '/no_such_node'
+    path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding='utf-8')
+
+    with pytest.raises(reg.RegistryError, match='node_aliases'):
+        reg.load('cr2-01', root=root)

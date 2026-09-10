@@ -24,6 +24,12 @@ PARAMS_SCHEMA: dict[str, Any] = {
     'required': ['schema_version', 'params'],
     'properties': {
         'schema_version': {'const': 1},
+        # registry のノード名 → 実行時の ROS ノード名。Nav2 の costmap のように
+        # 名前空間とノード名が同じで二重修飾になるものを吸収する。
+        'node_aliases': {
+            'type': 'object',
+            'additionalProperties': {'type': 'string', 'pattern': '^/'},
+        },
         'params': {
             'type': 'array',
             'minItems': 1,
@@ -305,6 +311,13 @@ def _cross_checks(params: dict, base: dict, robot_paths: list[Path],
         for key in (robot.get('param_overrides') or {}):
             if key not in keys:
                 errors.append(f'{path.name}: param_overrides の "{key}" が params.yaml に無い')
+
+    # node_aliases が実在するノードを指していること
+    nodes = {entry['node'] for entry in params['params']}
+    for node in (params.get('node_aliases') or {}):
+        if node not in nodes:
+            errors.append(
+                f'params.yaml: node_aliases の "{node}" が params のどの node にも無い')
 
     # modes が参照するドライバが drivers に宣言されていること
     declared = set((base.get('drivers') or {}).keys())

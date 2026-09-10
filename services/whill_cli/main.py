@@ -232,6 +232,52 @@ def params_show(key: str, robot: str = typer.Option('cr2-01', '--robot', '-r')) 
     console.print(f'  説明    : {spec.description}')
 
 
+@params_app.command('probe')
+def params_probe(
+    robot: str = typer.Option('cr2-01', '--robot', '-r'),
+    key: str = typer.Option('', '--key', '-k', help='1 つだけ試す'),
+) -> None:
+    """起動中のスタックに対して live パラメータが即時反映されるか実際に試す。
+
+    `live: true` が実態と合っているかを機械的に確かめる。合っていないものは
+    `config/params.yaml` の `live` を直すこと。試した値は元に戻す。
+    """
+    from whill_cli.probe import probe_all
+
+    reg = config.require_registry()
+    try:
+        registry = reg.load(robot)
+    except reg.RegistryError as exc:
+        console.print(f'[red]{exc}[/red]')
+        raise typer.Exit(2) from None
+
+    keys = [key] if key else None
+    if key and key not in registry.specs:
+        console.print(f'[red]未知のパラメータ: {key}[/red]')
+        raise typer.Exit(2)
+
+    results = probe_all(registry, _ros_env(), keys)
+
+    table = Table(title=f'{robot} — live パラメータの即時反映')
+    table.add_column('key')
+    table.add_column('ROS ノード')
+    table.add_column('結果')
+    failures = []
+    for result in results:
+        mark = '[green]OK[/green]' if result.ok else '[red]NG[/red]'
+        table.add_row(result.key, result.ros_node,
+                      mark if result.ok else f'{mark} {result.detail}')
+        if not result.ok:
+            failures.append(result)
+    console.print(table)
+
+    if failures:
+        console.print(f'[red]{len(failures)} 件が即時反映されない。'
+                      f'config/params.yaml の live を見直すこと[/red]')
+        raise typer.Exit(1)
+    console.print(f'[green]{len(results)} 件すべて即時反映された[/green]')
+
+
 @params_app.command('validate')
 def params_validate() -> None:
     """config/ 全体をスキーマ検証する。CI とコミット前に走らせる。"""

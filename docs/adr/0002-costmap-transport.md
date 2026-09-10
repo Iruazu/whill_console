@@ -40,6 +40,35 @@ mock 構成の実測で 200 × 200 セル（解像度 0.05 m = 10 × 10 m）、g
 - JSON のパースコストがブラウザ側にかかる。tablet の非力な端末で 5 Hz を
   出せるかは未検証。
 
+## Phase 1 で判明した前提（gateway の実装に直結する）
+
+Nav2 の `Costmap2DPublisher` は **`/…/costmap` に全量を publish し続けない**。
+初回（および格子サイズ・原点が変わったとき）だけ全量を latched で出し、
+以後の変化は `/…/costmap_updates`（`map_msgs/OccupancyGridUpdate`、矩形の部分更新）
+に流す。`publish_frequency: 2.0` は「全量を 2 Hz で出す」という意味ではない。
+
+実測（mock 構成、静止状態、2026-09-10）:
+
+| topic | 3 秒間の受信数 |
+|---|---|
+| `/local_costmap/costmap` | 1（latched の 1 通のみ） |
+| `/local_costmap/costmap_updates` | 10 |
+
+つまり **`costmap` だけを subscribe した gateway は、最初の 1 枚を出したあと
+永久に固まった地図を配信する。** Phase 2 では次の両方を受けること:
+
+1. `/…/costmap` — 全量。接続直後の初期表示と、格子が張り替わったときの再同期
+2. `/…/costmap_updates` — 部分更新。`x`, `y`, `width`, `height` の矩形を
+   保持中の格子に貼り込む
+
+Web 側の `CostmapFrame` は全量前提の型なので、Phase 2 で「全量」と「部分更新」の
+2 種類のフレームを持つ形に広げる。RLE 化は部分更新にもそのまま効く
+（むしろ全量より圧縮が効く）ので、この決定自体は変わらない。
+
+この挙動は `inflation_radius` を live で変えたときに実証された。全量トピックだけを
+見ていると「set は成功するのに costmap が変わらない」と誤読する（実際に誤読した）。
+`costmap_updates` で見れば `0.6 → 1.5` でコスト >0 のセルが 13508 → 27920 に増える。
+
 ## 切り替えの判断基準
 
 次のどれかが起きたら PNG に移す（Phase 2 で実測する）:

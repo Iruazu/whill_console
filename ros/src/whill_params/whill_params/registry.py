@@ -115,8 +115,24 @@ class Registry:
     base: dict[str, Any]
     values: dict[str, Any] = field(default_factory=dict)
     applied_preset: str | None = None
+    node_aliases: dict[str, str] = field(default_factory=dict)
 
     # ---- 参照 --------------------------------------------------------------
+
+    def ros_node(self, node: str) -> str:
+        """registry のノード名から、実行時の ROS ノード名（完全修飾）を返す。
+
+        Nav2 の costmap は yaml 上 `local_costmap` だが実ノードは
+        `/local_costmap/local_costmap`。`ros2 param set` の宛先はこちらで、
+        yaml のキーをそのまま使うと "Node not found" になる。
+        """
+        alias = self.node_aliases.get(node)
+        if alias:
+            return alias
+        return node if node.startswith('/') else f'/{node}'
+
+    def ros_node_for_key(self, key: str) -> str:
+        return self.ros_node(self.spec(key).node)
 
     def spec(self, key: str) -> ParamSpec:
         try:
@@ -269,7 +285,18 @@ def load(robot_id: str, *, preset: str | None = None,
     base = _load_yaml(root / 'robots' / 'cr2-base.yaml')
     robot = _load_yaml(root / 'robots' / f'{robot_id}.yaml')
 
+    raw_params = _load_yaml(root / 'params.yaml')
+    aliases = raw_params.get('node_aliases') or {}
+    known_nodes = {spec.node for spec in specs.values()}
+    for node in aliases:
+        # 存在しないノードへの別名は typo。黙って無視すると
+        # gateway が本物のノードに届かない理由が分からなくなる。
+        if node not in known_nodes:
+            raise RegistryError(
+                f'node_aliases の "{node}" は params.yaml のどの node にも一致しない')
+
     registry = Registry(specs=specs, robot=robot, base=base,
+                        node_aliases=dict(aliases),
                         values={k: copy.deepcopy(s.default) for k, s in specs.items()})
 
     # 個体 yaml の param_overrides は個体差の吸収。存在しないキーは黙って

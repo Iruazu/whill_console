@@ -23,6 +23,20 @@
 
 schema_version: 1
 
+# registry のノード名 → 実際の ROS ノード名（完全修飾）。
+#
+# Nav2 の costmap は名前空間とノード名が同じため、yaml 上のキーは `local_costmap`
+# だが実行時のノードは `/local_costmap/local_costmap` になる。gateway が
+# `ros2 param set` を出す先はこちらであって、yaml のキーではない。
+# ここに書いていないノードは `/<node>` として扱う。
+#
+# 生成側 (whill_params.generate_nav2_params) は yaml の構造から二重入れ子を
+# 判定するが、実行時にはテンプレートが手元にあるとは限らないので、
+# 実ノード名は宣言として持つ。
+node_aliases:
+  local_costmap: /local_costmap/local_costmap
+  global_costmap: /global_costmap/global_costmap
+
 params:
   # ---- controller_server / RegulatedPurePursuit ------------------------------
   - node: controller_server
