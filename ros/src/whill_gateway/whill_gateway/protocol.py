@@ -64,11 +64,17 @@ MSG_DIAGNOSTICS = 'diagnostics'
 MSG_SCAN = 'scan'
 MSG_IMAGE = 'image'
 MSG_PONG = 'pong'
+MSG_OBSTACLES = 'obstacles'
+"""server → client の仮想障害物の**現在の一覧**。
+
+client → server の `virtual_obstacles` は「操作」で、こちらは「状態」。
+同じ名前にすると、フレームを見たときにどちらの向きか分からなくなる。
+"""
 
 SERVER_MESSAGES = frozenset({
     MSG_HELLO, MSG_STATUS, MSG_ERROR, MSG_PARAMS, MSG_PARAM_CHANGED,
     MSG_COSTMAP, MSG_COSTMAP_UPDATE, MSG_POSE, MSG_PATH, MSG_SCAN,
-    MSG_TF, MSG_DIAGNOSTICS, MSG_IMAGE, MSG_PONG,
+    MSG_TF, MSG_DIAGNOSTICS, MSG_IMAGE, MSG_PONG, MSG_OBSTACLES,
 })
 """server → client のフレーム一覧。
 
@@ -83,7 +89,7 @@ PRE_AUTH_MESSAGES = frozenset({MSG_HELLO, MSG_ERROR})
 # 「黙って何も届かない」に変えないため）。
 STREAMS = frozenset({
     MSG_STATUS, MSG_PARAMS, MSG_COSTMAP, MSG_POSE, MSG_PATH, MSG_SCAN,
-    MSG_TF, MSG_DIAGNOSTICS, MSG_IMAGE,
+    MSG_TF, MSG_DIAGNOSTICS, MSG_IMAGE, MSG_OBSTACLES,
 })
 
 # フレーム種別 → それが属するストリーム。
@@ -106,6 +112,9 @@ def stream_of(kind: str) -> str:
 
 DEFAULT_STREAMS = frozenset({
     MSG_STATUS, MSG_PARAMS, MSG_COSTMAP, MSG_POSE, MSG_PATH, MSG_SCAN,
+    # 俯瞰図に重ねて描くものなので既定で流す。置いたまま忘れられるのが
+    # 一番まずいので、繋いだら必ず見えるようにする。
+    MSG_OBSTACLES,
 })
 """何も指定せずに繋いだときに流れるもの。画像と tf は明示的に要求させる。"""
 
