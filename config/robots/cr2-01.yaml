@@ -72,3 +72,7 @@ maps:
   campus_v2:
     source_repo: ~/whill_lab0_ros2
     occupancy: docs/maps/campus/v2/occupancy_v2.yaml
+    # 配車の名前付き地点。occupancy と同じ map frame の座標系。
+    # パスから site を推測せず明示するのは、地図を差し替えたときに
+    # 地点だけ古いまま残るのを防ぐため。
+    waypoints: docs/maps/campus/waypoints.yaml

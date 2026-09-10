@@ -17,6 +17,9 @@
   <exec_depend>whill_mock_drivers</exec_depend>
   <exec_depend>whill_params</exec_depend>
   <exec_depend>whill_gateway</exec_depend>
+  <!-- 既存スタック側。ノードだけ起動する（dispatch_launch.py は include
+       しない — rosbridge と http.server が付いてきて ROS への口が増える）。 -->
+  <exec_depend>whill_dispatch</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
 
   <test_depend>ament_copyright</test_depend>

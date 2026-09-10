@@ -44,6 +44,8 @@ export function useStoreProbe(): void {
           playing: state.replay.playing,
           finished: state.replay.finished,
         },
+        dispatch: state.dispatch,
+        waypoints: state.waypoints.map((w) => w.name),
         tfFrames: state.tf ? Object.keys(state.tf.parents).length : 0,
         unhandled: state.unhandledFrames,
       }

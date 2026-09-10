@@ -104,6 +104,36 @@ def _nav2_params(robot_id: str, preset: str, use_sim_time: bool) -> str:
     return handle.name
 
 
+def _waypoints_path(mode: str, robot: dict) -> str:
+    """配車地点の yaml。
+
+    mock は廊下地図に合わせた本リポの地点、real は個体 yaml の `maps.site` から
+    既存リポの `docs/maps/<site>/waypoints.yaml` を引く。
+
+    実機の地点をそのまま mock で使うと、キャンパスの座標が廊下地図の外を指して
+    **全部 ABORTED になり、配線が壊れているのか地点が外なのか区別が付かない。**
+    """
+    if mode == 'mock':
+        return os.path.join(
+            get_package_share_directory('whill_bringup'),
+            'config', 'mock_waypoints.yaml')
+
+    maps = robot.get('maps') or {}
+    entry = maps.get(maps.get('default')) or {}
+    relative = entry.get('waypoints')
+    if not relative:
+        raise RuntimeError(
+            '個体 yaml の maps.<default>.waypoints が無い。配車地点のパスを'
+            '設定から引けない（ノード内にハードコードしないこと）')
+    yaml_path = (Path(entry.get('source_repo', '~/whill_lab0_ros2')).expanduser()
+                 / relative)
+    if not yaml_path.is_file():
+        # 空のまま起動すると「地点が 1 つも出ない配車パネル」になり、
+        # 原因が分かりにくい。ここで止めてパスを言う。
+        raise RuntimeError(f'配車地点が見つからない: {yaml_path}')
+    return str(yaml_path)
+
+
 def _static_tf_nodes(robot: dict, use_sim_time: bool) -> list:
     """個体 yaml の tf_static をそのまま static_transform_publisher にする。
 
@@ -254,6 +284,19 @@ def _setup(context, *args, **kwargs):
             # whill_serial.subscribes と一致していること。
             remappings=[('cmd_vel_out', '/whill/controller/cmd_vel')],
         ))
+
+    # ---- 配車 --------------------------------------------------------------
+    # **`dispatch_launch.py` は include しない。** あれは rosbridge (9090) と
+    # 静的 UI の http.server (8000) も一緒に立てる composition で、
+    # ROS への口が 2 つ増える（設計原則 1 違反）。要るのはノードだけ。
+    if mode in ('mock', 'real'):
+        actions.append(Node(
+            package='whill_dispatch', executable='dispatch_node',
+            name='dispatch_node', output='screen',
+            parameters=[{
+                'waypoints_path': _waypoints_path(mode, robot),
+                'use_sim_time': use_sim_time,
+            }]))
 
     # ---- gateway -----------------------------------------------------------
     if start_gateway:

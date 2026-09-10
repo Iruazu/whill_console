@@ -5,6 +5,7 @@ import { useStackd } from './hooks/useStackd'
 import { useStoreProbe } from './hooks/useStoreProbe'
 import { loadToken } from './lib/token'
 import { Overview2D } from './panels/Overview2D'
+import { DispatchPanel } from './panels/DispatchPanel'
 import { ParamsPanel } from './panels/ParamsPanel'
 import { ReplayBar } from './panels/ReplayBar'
 import { TokenGate } from './panels/TokenGate'
@@ -38,7 +39,11 @@ export function App() {
       <ReplayBar send={send} />
       <div className="layout">
         <Overview2D send={send} />
-        <ParamsPanel send={send} />
+        <div className="side">
+          {/* dispatch_node が居るモードでのみ描かれる。 */}
+          <DispatchPanel send={send} />
+          <ParamsPanel send={send} />
+        </div>
       </div>
     </div>
   )

@@ -609,4 +609,117 @@ test.describe('console のスクリーンショット', () => {
     await expect(page.getByTestId('replay-no-total')).toBeVisible()
     await expect(page.getByTestId('replay-position')).toHaveText('— / —')
   })
+
+  test('配車パネルは dispatch_node が居るときだけ出る', async ({ page }, testInfo) => {
+    await openWithToken(page)
+    // replay など dispatch_node が居ないモードでは gateway が 1 通も送らない。
+    // 空のパネルを出すと「配車できない」と「配車していない」が区別できない。
+    await expect(page.getByTestId('dispatch')).toHaveCount(0)
+
+    await page.evaluate(() => {
+      const ingest = (window as unknown as {
+        __whillIngest: (f: Record<string, unknown>) => void
+      }).__whillIngest
+      ingest({
+        type: 'dispatch_waypoints',
+        waypoints: [
+          { name: 'west', label: '西端', x: -7, y: 0, yaw: 0 },
+          { name: 'center', label: '中央', x: 0, y: 0, yaw: 0 },
+          { name: 'east', label: '東端', x: 7, y: 0, yaw: 0 },
+        ],
+      })
+      ingest({
+        type: 'dispatch_state', phase: 'ACTIVE', job_id: 3, waypoint: 'east',
+        progress: 0.42, queue_len: 1, aligned: true, fitness: 0.31,
+      })
+    })
+
+    await expect(page.getByTestId('dispatch')).toBeVisible()
+    await expect(page.getByTestId('dispatch-phase')).toHaveText('走行中')
+    await expect(page.getByTestId('dispatch-queue')).toHaveText('待ち 1')
+    await expect(page.getByTestId('dispatch-aligned')).toHaveText('自己位置 OK')
+    await expect(page.getByTestId('dispatch-fitness')).toHaveText('fitness 0.310')
+    await expect(page.getByTestId('dispatch-to-east')).toHaveText('東端')
+
+    await page.screenshot({
+      path: `${SHOT_DIR}/${testInfo.project.name}-dispatch.png`,
+      fullPage: true,
+    })
+  })
+
+  test('gateway 未接続では行き先を押せない', async ({ page }) => {
+    // 押した感触だけあって何も起きないのが最悪。実際に送られることは
+    // 実機構成の live テスト（live-dispatch.spec.ts）で見る。
+    await openWithToken(page)
+    await page.evaluate(() => {
+      const ingest = (window as unknown as {
+        __whillIngest: (f: Record<string, unknown>) => void
+      }).__whillIngest
+      ingest({ type: 'dispatch_waypoints', waypoints: [{ name: 'east', label: '東端' }] })
+      ingest({ type: 'dispatch_state', phase: 'IDLE' })
+    })
+    const button = page.getByTestId('dispatch-to-east')
+    await expect(button).toBeDisabled()
+  })
+
+  test('走っていない配車は取り消せない', async ({ page }) => {
+    await openWithToken(page)
+    await page.evaluate(() => {
+      ;(window as unknown as {
+        __whillIngest: (f: Record<string, unknown>) => void
+      }).__whillIngest({ type: 'dispatch_state', phase: 'IDLE' })
+    })
+    await expect(page.getByTestId('dispatch-cancel')).toBeDisabled()
+    // 走っていないので進捗も出さない（「進捗 0 %」と「まだ走っていない」は別）
+    await expect(page.getByTestId('dispatch-progress')).toHaveCount(0)
+  })
+
+  test('地点が 1 つも無いことが分かる', async ({ page }) => {
+    // 空のボタン列を出すと waypoints.yaml の指定ミスに気づけない
+    await openWithToken(page)
+    await page.evaluate(() => {
+      ;(window as unknown as {
+        __whillIngest: (f: Record<string, unknown>) => void
+      }).__whillIngest({ type: 'dispatch_state', phase: 'IDLE' })
+    })
+    await expect(page.getByTestId('dispatch-no-waypoints')).toBeVisible()
+  })
+
+  test('終端の phase は次の配車まで残る', async ({ page }) => {
+    // 一瞬で消すと短い job の結末を見逃す
+    await openWithToken(page)
+    await page.evaluate(() => {
+      ;(window as unknown as {
+        __whillIngest: (f: Record<string, unknown>) => void
+      }).__whillIngest({
+        type: 'dispatch_state', phase: 'ABORTED', waypoint: 'east',
+        progress: 0.7, queue_len: 0,
+      })
+    })
+    await expect(page.getByTestId('dispatch-phase')).toHaveText('中断')
+    await expect(page.getByTestId('dispatch-active')).toBeVisible()
+  })
+
+  test('ブラウザが開く WebSocket は gateway と stackd だけ', async ({ page }) => {
+    // 設計原則 1: ROS への口は gateway の WebSocket 1 本と ssh のみ。
+    // 既存の配車 UI は rosbridge (9090) に直結していたので、移植のときに
+    // それを持ち込んでいないことを機械的に確かめる。
+    const urls: string[] = []
+    page.on('websocket', (ws) => urls.push(ws.url()))
+    await openWithToken(page)
+    await expect(page.getByTestId('topbar')).toBeVisible()
+    await page.waitForTimeout(1500)
+
+    // Vite の HMR ソケットは開発サーバのもので、成果物には含まれない。
+    const app = urls.filter((url) => !url.includes(':5173') && !url.includes('/@vite/'))
+
+    // 8765 = gateway（ROS への唯一の口）、8770 = stackd（起動・停止とログ。
+    // ROS を喋らないので DDS も topic も通らない）。この 2 つ以外は増やさない。
+    // 特に rosbridge (9090) — 既存の配車 UI が直結していた口 — を持ち込まない。
+    const allowed = /:(8765|8770)\/?$/
+    expect(app.every((url) => allowed.test(url)),
+      `想定外の WebSocket: ${app.join(' / ')}`).toBe(true)
+    expect(urls.some((url) => url.includes(':9090')),
+      'rosbridge に繋いでいる').toBe(false)
+  })
 })

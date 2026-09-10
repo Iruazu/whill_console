@@ -48,6 +48,7 @@ from rosbag2_interfaces.srv import Pause, Resume, SetRate
 from rosgraph_msgs.msg import Clock as ClockMsg
 
 from whill_gateway import protocol
+from whill_gateway.dispatch import DispatchBridge, DispatchError
 from whill_gateway.driver_telemetry import DriverTelemetry
 from whill_gateway.obstacles import ObstacleError, ObstacleStore, apply_command
 from whill_gateway.param_bridge import MovingWatch, ParamBridge
@@ -150,6 +151,12 @@ class Gateway(Node):
         self._telemetry_timer = self.create_timer(
             1.0 / float(self.get_parameter('telemetry_publish_rate').value),
             self.driver_telemetry.publish, clock=self._wall)
+
+        # ---- 配車 ----------------------------------------------------------
+        # 既存 whill_dispatch の /dispatch/* を橋渡しする。ブラウザは
+        # rosbridge を使わない（設計原則 1）。dispatch_node が居ないモードでは
+        # 購読が空振りするだけで、フレームは 1 通も流れない。
+        self.dispatch = DispatchBridge(self, self.emit)
 
         # live パラメータなので、走行中に変えられる。set のたびに反映する。
         self.add_on_set_parameters_callback(self._on_parameters_set)
@@ -501,6 +508,23 @@ class Gateway(Node):
             # 応答を待っていないため — 待つと購読ごと止まる（K9）。
             return
 
+        if kind == protocol.MSG_DISPATCH_SUBMIT:
+            try:
+                self.dispatch.submit(message)
+            except DispatchError as exc:
+                raise protocol.ProtocolError(str(exc)) from None
+            # 受理したことは次の dispatch_state（phase が QUEUED になる）で
+            # 分かる。ここで成功を返さないのは、実際に goal が受け付けられた
+            # かどうかをまだ知らないため。
+            return
+
+        if kind == protocol.MSG_DISPATCH_CANCEL:
+            try:
+                self.dispatch.cancel()
+            except DispatchError as exc:
+                raise protocol.ProtocolError(str(exc)) from None
+            return
+
         if kind == protocol.MSG_PRESET_APPLY:
             name = protocol.require(message, 'name', str)
             results = await self.params.apply_preset(name, source='ui')
@@ -555,6 +579,11 @@ class Gateway(Node):
         # ではなく、**バッテリーが見えないまま操作を始められる時間を作らない**ため。
         if client.wants(protocol.MSG_TELEMETRY):
             client.enqueue(protocol.safe_encode(self.driver_telemetry.frame()))
+        # 配車は latched ではなく再送なので、保持しているものを配らないと
+        # 最初の 1 秒は地点一覧が空のパネルが出る。
+        for frame in self.dispatch.snapshot():
+            if client.wants(protocol.stream_of(frame['type'])):
+                client.enqueue(protocol.safe_encode(frame))
         # 再生が既に終わっている bag に後から繋いだとき、これが無いと
         # 「終了した」ことが分からないまま空の画面を見ることになる。
         if self.replay is not None and client.wants(protocol.MSG_REPLAY):

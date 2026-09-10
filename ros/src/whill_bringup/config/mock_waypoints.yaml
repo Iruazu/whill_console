@@ -1,0 +1,30 @@
+# mock 用の配車地点。
+#
+# 実機の地点（`~/whill_lab0_ros2/docs/maps/campus/waypoints.yaml`）は
+# キャンパスの map 座標にあり、mock の廊下地図（22 m x 7 m、`mock_corridor.yaml`）
+# の外を指す。そのまま使うと**全部 ABORTED になり、配車の配線が壊れているのか
+# 地点が地図の外なのか区別が付かない。**
+#
+# 座標は `scripts/make_mock_map.py` が作る廊下の中。廊下は原点中心で、
+# 壁の内側は x が ±9.85 m、y が ±2.35 m（`free_bounds()`）。壁際は inflation で
+# 到達不能になるので、車体幅ぶん内側に取って y=0 に置く。
+#
+# 寸法を変えるときは make_mock_map.py と一対で見直すこと。地点が廊下の中に
+# あることは `tests/ros/test_dispatch.py` が生成器の定数を見て検査する。
+frame_id: map
+waypoints:
+  - name: west
+    label: 西端
+    x: -7.0
+    y: 0.0
+    yaw: 0.0
+  - name: center
+    label: 中央
+    x: 0.0
+    y: 0.0
+    yaw: 0.0
+  - name: east
+    label: 東端
+    x: 7.0
+    y: 0.0
+    yaw: 0.0

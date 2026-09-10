@@ -1,6 +1,8 @@
 import { applyCostmapUpdate, costmapFromFrame } from './rle'
 import type {
   CostmapScope,
+  DispatchPhase,
+  DispatchState,
   CostmapState,
   DiagnosticEntry,
   ParamChange,
@@ -14,6 +16,7 @@ import type {
   TelemetryFrame,
   TelemetryItem,
   TfSummary,
+  Waypoint,
   VirtualObstacle,
 } from './types'
 
@@ -48,6 +51,10 @@ export interface FrameState {
   replay: ReplayFrame | null
   /** ドライバのテレメトリ。閾値の判定は gateway 側で済んでいる。 */
   telemetry: TelemetryFrame | null
+  /** 配車の状態。dispatch_node が居ないモードでは null のまま。 */
+  dispatch: DispatchState | null
+  /** 選べる配車地点。dispatch_node が 1 Hz で再送するもの。 */
+  waypoints: Waypoint[]
   params: ParamSpec[]
   /** registry と実ノードの値がずれているもの。異常なので隠さない。 */
   mismatches: { key: string; registry: unknown; live: unknown }[]
@@ -82,6 +89,8 @@ export const emptyFrameState = (): FrameState => ({
   status: null,
   replay: null,
   telemetry: null,
+  dispatch: null,
+  waypoints: [],
   params: [],
   mismatches: [],
   unreachable: [],
@@ -277,6 +286,43 @@ export function applyFrame(
               typeof frame.latency_ms === 'number' ? frame.latency_ms : null,
             stamp: num(frame.stamp),
           },
+        },
+      }
+
+    case 'dispatch_state':
+      return {
+        handled: true,
+        state: {
+          ...state,
+          receivedAt: stamp,
+          dispatch: {
+            jobId: opt(frame.job_id),
+            phase: typeof frame.phase === 'string'
+              ? (frame.phase as DispatchPhase)
+              : null,
+            waypoint: typeof frame.waypoint === 'string' ? frame.waypoint : null,
+            // **null を 0 に潰さない。** 「まだ走っていない」と「進捗 0 %」は別。
+            progress: opt(frame.progress),
+            queueLen: opt(frame.queue_len),
+            aligned: typeof frame.aligned === 'boolean' ? frame.aligned : null,
+            fitness: opt(frame.fitness),
+          },
+        },
+      }
+
+    case 'dispatch_waypoints':
+      return {
+        handled: true,
+        state: {
+          ...state,
+          receivedAt: stamp,
+          waypoints: ((frame.waypoints as WireFrame[]) ?? []).map((raw) => ({
+            name: str(raw.name),
+            label: str(raw.label) || str(raw.name),
+            x: opt(raw.x),
+            y: opt(raw.y),
+            yaw: opt(raw.yaw),
+          })),
         },
       }
 
