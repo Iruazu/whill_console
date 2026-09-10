@@ -83,6 +83,20 @@ export interface PoseFrame {
   stamp: number
 }
 
+/** LiDAR の 1 スキャン。角度は angleMin と angleIncrement から復元する。
+ *
+ * gateway 側で間引いてあるので、`angleIncrement` は間引き後の値。
+ * 無限遠と range 外は null（0 にすると原点に障害物があるように描かれる）。
+ */
+export interface ScanFrame {
+  frameId: string
+  angleMin: number
+  angleIncrement: number
+  rangeMax: number
+  ranges: (number | null)[]
+  stamp: number
+}
+
 export interface PathFrame {
   frameId: string
   points: { x: number; y: number }[]

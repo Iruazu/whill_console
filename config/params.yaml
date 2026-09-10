@@ -495,6 +495,19 @@ params:
       滑らかさが足りないと感じてから上げること。
 
   - node: whill_gateway
+    name: scan_publish_rate
+    type: double
+    default: 5.0
+    range: {min: 1.0, max: 15.0, step: 1.0}
+    unit: Hz
+    live: true
+    safety_class: none
+    description: >-
+      LiDAR の 2D 投影を WebSocket へ流す上限レート。VLP-16 は 10 Hz で
+      約 900 点を出すが、俯瞰図の背景としてはそこまで要らない。点数も
+      間引いて送る（gateway の SCAN_MAX_POINTS）。帯域が気になるならまずここを下げる。
+
+  - node: whill_gateway
     name: image_publish_rate
     type: double
     default: 1.0

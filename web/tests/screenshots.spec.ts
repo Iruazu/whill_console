@@ -78,6 +78,97 @@ test.describe('console のスクリーンショット', () => {
     await expect(badge).not.toHaveText(/gateway 接続$/)
   })
 
+  test('合成 costmap を流し込むと実際に地図が描かれる', async ({ page }, testInfo) => {
+    // gateway 抜きで「地図が描かれる」ことを確かめる。真っ黒のスクリーン
+    // ショットを撮って「描画できている」と誤読しないため、canvas の
+    // 中身を実際に読んで色の種類を数える。
+    await openWithToken(page)
+    await expect(page.getByTestId('overview-empty')).toBeVisible()
+
+    await page.evaluate(() => {
+      const ingest = (window as unknown as {
+        __whillIngest: (frame: Record<string, unknown>) => void
+      }).__whillIngest
+
+      // 20x20 の格子。左半分を空き、右半分を占有、上 2 行を未知にする。
+      const width = 20
+      const height = 20
+      const rle: number[] = []
+      for (let row = 0; row < height; row += 1) {
+        const value = row >= height - 2 ? -1 : 0
+        rle.push(value, width / 2)
+        rle.push(row >= height - 2 ? -1 : 100, width / 2)
+      }
+      ingest({
+        type: 'costmap', scope: 'local', frame_id: 'map', resolution: 0.5,
+        width, height, origin_x: -5, origin_y: -5, rle, ratio: 0.1,
+        stamp: 1, seq: 1,
+      })
+      ingest({ type: 'pose', x: 0, y: 0, yaw: 0.4, frame_id: 'map', source: 'test', stamp: 1 })
+      ingest({
+        type: 'path', frame_id: 'map',
+        points: [[-3, -3], [0, 0], [3, 2]], stamp: 1,
+      })
+      ingest({
+        type: 'scan', frame_id: 'velodyne', angle_min: 0,
+        angle_increment: Math.PI / 8, range_max: 10,
+        ranges: Array.from({ length: 16 }, (_, i) => 2 + (i % 3)), stamp: 1,
+      })
+    })
+
+    await expect(page.getByTestId('overview-empty')).toHaveCount(0)
+
+    const colours = await page.evaluate(() => {
+      const canvas = document.querySelector(
+        '[data-testid="overview-canvas"]',
+      ) as HTMLCanvasElement
+      const ctx = canvas.getContext('2d')!
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+      const seen = new Set<string>()
+      for (let i = 0; i < data.length; i += 4) {
+        seen.add(`${data[i]},${data[i + 1]},${data[i + 2]}`)
+      }
+      return [...seen]
+    })
+
+    // 背景 + 格子 + 空き + 占有 + 未知 + 経路 + 車体 + LiDAR。
+    // 真っ黒（1 色）なら描けていない。
+    expect(colours.length).toBeGreaterThan(5)
+
+    await page.screenshot({
+      path: `${SHOT_DIR}/${testInfo.project.name}-overview.png`,
+      fullPage: true,
+    })
+  })
+
+  test('進行方向上に切り替えると絵が変わる', async ({ page }) => {
+    await openWithToken(page)
+    await page.evaluate(() => {
+      const ingest = (window as unknown as {
+        __whillIngest: (frame: Record<string, unknown>) => void
+      }).__whillIngest
+      ingest({
+        type: 'costmap', scope: 'local', frame_id: 'map', resolution: 0.5,
+        width: 20, height: 20, origin_x: -5, origin_y: -5,
+        rle: [0, 200, 100, 200], ratio: 0.1, stamp: 1, seq: 1,
+      })
+      ingest({ type: 'pose', x: 0, y: 0, yaw: 1.0, frame_id: 'map', source: 'test', stamp: 1 })
+    })
+
+    const snapshot = async () =>
+      page.evaluate(() => {
+        const canvas = document.querySelector(
+          '[data-testid="overview-canvas"]',
+        ) as HTMLCanvasElement
+        return canvas.toDataURL().slice(0, 512)
+      })
+
+    const before = await snapshot()
+    await page.getByTestId('heading-up').check()
+    await page.waitForTimeout(200)
+    expect(await snapshot()).not.toBe(before)
+  })
+
   test('768px で ops 相当の幅が横スクロールしない', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 })
     await openWithToken(page)
