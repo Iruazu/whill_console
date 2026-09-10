@@ -18,7 +18,7 @@ from launch_ros.actions import Node
 EXECUTABLES = {
     'mock_whill_serial': 'mock_whill_serial',
     'mock_velodyne': 'mock_velodyne',
-    'mock_bno085': 'mock_bno085',
+    'mock_rt_9axis': 'mock_rt_9axis',
     'mock_realsense': 'mock_realsense',
 }
 

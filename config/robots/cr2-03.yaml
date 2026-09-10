@@ -24,9 +24,10 @@ hardware:
     host_interface: null   # 実車の USB-Ethernet アダプタ未定
     port: 2368
     model: VLP16
-  bno085:
-    # 現車に載っているのは RT-USB-9AXIS-00（CDC-ACM, VID:PID 2b72:0003）。
-    # bno085 への換装可否は docs/open-questions.md Q1 で確認待ち。
+  rt_9axis:
+    # RT-USB-9AXIS-00。CDC-ACM (usb-serial ではない)、VID:PID 2b72:0003。
+    # デバイスが名乗る serial "9AXIS-00" は型番であって個体 ID ではないので、
+    # udev は VID:PID で symlink を張っている。
     port: /dev/imu-03
     frame_id: imu_link
   realsense:

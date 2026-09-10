@@ -1,4 +1,4 @@
-"""9軸 IMU のモック。
+"""RT-USB-9AXIS-00 (9軸 IMU) のモック。
 
 /whill/odom の yaw に追従した姿勢を 100 Hz で出す。odom と独立に自走させないのは、
 drivers パネルの yaw vs ndt 比較（localization 劣化の早期検知）を検証するとき、
@@ -6,6 +6,10 @@ drivers パネルの yaw vs ndt 比較（localization 劣化の早期検知）�
 
 温度は /imu/temperature に別トピックで出す。cr2-base.yaml の telemetry 宣言が
 そのトピックを参照しているため、宣言と実装をここで一致させている。
+
+実ドライバ (rt_usb_9axisimu_driver) は LifecycleNode で、configure → activate の
+間に約 1.5 s の待ちが要る。モックは通常ノードとして即 publish を始める。
+起動タイミングの差は real モードを配線するときに launch 側で吸収する。
 """
 
 from __future__ import annotations
@@ -27,12 +31,12 @@ from whill_mock_drivers.common import (
 GRAVITY = 9.80665
 
 
-class MockBno085(MockDriverNode):
+class MockRt9Axis(MockDriverNode):
 
-    driver_name = 'bno085'
+    driver_name = 'rt_9axis'
 
     def __init__(self) -> None:
-        super().__init__('mock_bno085')
+        super().__init__('mock_rt_9axis')
 
         self.declare_parameter('frame_id', self.hardware.get('frame_id', 'imu_link'))
         # deg/min。0 なら odom と完全一致。localization 劣化の UI を試すときに上げる。
@@ -118,7 +122,7 @@ class MockBno085(MockDriverNode):
 
 def main(args=None) -> None:
     rclpy.init(args=args)
-    node = MockBno085()
+    node = MockRt9Axis()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
