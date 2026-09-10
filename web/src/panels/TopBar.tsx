@@ -7,17 +7,28 @@ import { useConsoleStore } from '../state/store'
  */
 export function TopBar() {
   const connection = useConsoleStore((s) => s.connection)
+  const detail = useConsoleStore((s) => s.connectionDetail)
   const status = useConsoleStore((s) => s.status)
 
   const mode = status?.mode ?? 'mock'
   const connected = connection === 'connected'
+  // 繋がらない理由を隠さない。「gateway 未接続」だけだと、トークンが違うのか
+  // gateway が落ちているのか区別できない。
+  const label = connected
+    ? 'gateway 接続'
+    : detail
+      ? `gateway ${connection}: ${detail}`
+      : `gateway ${connection}`
 
   return (
     <div className="topbar" data-testid="topbar">
       <span className="robot">{status?.robotId ?? 'cr2-01'}</span>
       <span className={`badge mode-${mode}`}>{mode}</span>
-      <span className={`badge ${connected ? 'state-ok' : 'state-down'}`}>
-        {connected ? 'gateway 接続' : 'gateway 未接続'}
+      <span
+        className={`badge ${connected ? 'state-ok' : 'state-down'}`}
+        data-testid="connection"
+      >
+        {label}
       </span>
       <span className="badge">
         遅延 {status?.latencyMs != null ? `${status.latencyMs} ms` : '—'}

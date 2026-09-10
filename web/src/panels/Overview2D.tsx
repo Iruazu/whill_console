@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-import { cellColor, decodeRle } from '../lib/rle'
+import { cellColor } from '../lib/rle'
 import { useConsoleStore } from '../state/store'
 
 /** 2D 俯瞰。costmap + path + LiDAR 2D 投影 + 仮想障害物。
@@ -10,7 +10,9 @@ import { useConsoleStore } from '../state/store'
  */
 export function Overview2D() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const costmap = useConsoleStore((s) => s.costmap)
+  // 描画そのものは #20 で作り込む。ここでは全量が届いていることが
+  // 目で見えれば十分。
+  const costmap = useConsoleStore((s) => s.costmaps.local)
   const followRobot = useConsoleStore((s) => s.followRobot)
   const headingUp = useConsoleStore((s) => s.headingUp)
   const setFollowRobot = useConsoleStore((s) => s.setFollowRobot)
@@ -22,13 +24,12 @@ export function Overview2D() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    const cells = decodeRle(costmap.rle, costmap.width * costmap.height)
     const image = ctx.createImageData(costmap.width, costmap.height)
-    for (let i = 0; i < cells.length; i += 1) {
+    for (let i = 0; i < costmap.cells.length; i += 1) {
       // OccupancyGrid の行は下から上。ImageData は上から下なので反転する。
       const row = costmap.height - 1 - Math.floor(i / costmap.width)
       const target = (row * costmap.width + (i % costmap.width)) * 4
-      const [r, g, b, a] = cellColor(cells[i])
+      const [r, g, b, a] = cellColor(costmap.cells[i])
       image.data[target] = r
       image.data[target + 1] = g
       image.data[target + 2] = b

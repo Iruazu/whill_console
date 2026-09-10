@@ -155,6 +155,25 @@ ros2 run whill_params generate_nav2_params --robot cr2-01 --preset cautious -o /
 whill topics --mode mock
 ```
 
+## Web コンソールを開く
+
+```bash
+# 実機PC 側
+WHILL_GATEWAY_TOKEN=$(openssl rand -hex 16) whill run --robot cr2-01 --mode mock --gateway
+(cd web && pnpm dev)          # 0.0.0.0:5173 で待ち受ける
+
+# 他PC / tablet から
+#   http://<lab-pc>:5173
+```
+
+初回はトークンの入力を求められる。実機PC の `WHILL_GATEWAY_TOKEN` と同じ値を
+入れる。**URL には載らない**（履歴・プロキシログに残るため）。ブラウザの
+localStorage に保存される。
+
+gateway が落ちても自動で繋ぎ直す（指数バックオフ、上限 10 秒）。ただし
+**認証に失敗したときは再試行しない** — トークンが違うまま叩き続けても直らず、
+原因が画面から消えるだけなので。
+
 ## テスト
 
 ```bash
@@ -207,6 +226,8 @@ skip の理由がログに出る（全部 skip されて緑、を見逃さない
 | E-stop を解除しても走り出さない | 仕様どおり。E-stop は Nav2 の goal を取り消すので、再開には改めてゴールを与えること。 |
 | `whill stack` が「stackd に接続できない」と言う | stackd が起動していない。`uv run --project services whill-stackd`。 |
 | stackd で止めたのにノードが残る | `ros2 node list` で確認する。残るならプロセスグループが作れていない環境。`docs/open-questions.md` に追記して止まること。 |
+| ブラウザに「gateway error: 認証に失敗した」と出る | トークンが違う。localStorage の `whill.gateway.token` を消して入れ直す（devtools か、アプリのトークン入力に戻る）。 |
+| 画面は出るが何も届かない | 上部帯の接続状態を見る。`disconnected` なら gateway が落ちている、`error` なら理由が出ている。 |
 | gateway が `address already in use` で落ちる | 前回のプロセスが残っている。`ss -ltnp \| grep 8765` で PID を見て落とす。 |
 | `mode=real` / `mode=sim` で例外が出る | 未配線。仕様どおり（黙って起動しないより落とす）。`docs/open-questions.md` K5。 |
 

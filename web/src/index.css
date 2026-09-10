@@ -102,3 +102,35 @@ body {
   .layout { flex-direction: column; }
   .panel.params { min-width: 0; }
 }
+
+.token-gate {
+  max-width: 460px;
+  margin: 12vh auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 24px;
+}
+
+.token-gate h2 { margin: 0 0 8px; font-size: 16px; }
+.token-gate form { display: flex; gap: 8px; margin-top: 12px; }
+
+.token-gate input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.token-gate button {
+  background: var(--accent);
+  color: #14171c;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 18px;
+  font-weight: 600;
+  cursor: pointer;
+}
