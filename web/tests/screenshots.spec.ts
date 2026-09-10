@@ -722,4 +722,173 @@ test.describe('console のスクリーンショット', () => {
     expect(urls.some((url) => url.includes(':9090')),
       'rosbridge に繋いでいる').toBe(false)
   })
+
+  /** telemetry フレームを 1 つ組む。宣言と同じ形。 */
+  const telemetryFrame = (over: Record<string, unknown> = {}) => ({
+    type: 'telemetry',
+    stamp: 1,
+    drivers: [
+      {
+        driver: 'whill_serial',
+        expected: true,
+        items: [
+          {
+            name: 'battery', driver: 'whill_serial',
+            topic: '/whill/states/model_cr2', value: 87, unit: '%',
+            widget: 'bar', level: 'ok', warn: 30, crit: 15,
+            compare: 'below', description: '', age: 0.4,
+          },
+          {
+            name: 'motor_current_left', driver: 'whill_serial',
+            topic: '/whill/states/model_cr2', value: 9.2, unit: 'A',
+            widget: 'number', level: 'warn', warn: 8, crit: 12,
+            compare: 'above', description: '', age: 0.4,
+          },
+        ],
+      },
+      {
+        driver: 'velodyne',
+        expected: true,
+        items: [
+          {
+            name: 'points_per_scan', driver: 'velodyne',
+            topic: '/velodyne_points', value: null, unit: 'pts',
+            widget: 'number', level: 'unknown', warn: 12000, crit: 6000,
+            compare: 'below', description: '', age: null,
+          },
+          {
+            name: 'scan_rate', driver: 'velodyne', topic: '/velodyne_points',
+            value: null, unit: 'Hz', widget: 'number', level: 'unknown',
+            warn: 8, crit: 5, compare: 'below', description: '', age: null,
+          },
+        ],
+      },
+      {
+        driver: 'rt_9axis',
+        expected: true,
+        items: [
+          {
+            name: 'yaw', driver: 'rt_9axis', topic: '/imu/data_rep145',
+            value: 42.5, unit: 'deg', widget: 'heading', level: 'ok',
+            warn: null, crit: null, compare: 'none', description: '', age: 0.1,
+          },
+          {
+            name: 'temp', driver: 'rt_9axis', topic: '/imu/temperature',
+            value: 34.03, unit: 'degC', widget: 'number', level: 'stale',
+            warn: 60, crit: 75, compare: 'above', description: '', age: 12.4,
+          },
+        ],
+      },
+      {
+        driver: 'realsense',
+        expected: false,
+        items: [
+          {
+            name: 'frame_rate', driver: 'realsense', topic: '/camera/x',
+            value: null, unit: 'Hz', widget: 'number', level: 'unknown',
+            warn: 4, crit: 2, compare: 'below', description: '', age: null,
+          },
+        ],
+      },
+    ],
+    ...over,
+  })
+
+  const feed = (page: import('@playwright/test').Page, frame: Record<string, unknown>) =>
+    page.evaluate(
+      (f) =>
+        (window as unknown as {
+          __whillIngest: (x: Record<string, unknown>) => void
+        }).__whillIngest(f),
+      frame,
+    )
+
+  test('drivers パネルが宣言どおりに出る', async ({ page }, testInfo) => {
+    await openWithToken(page)
+    // gateway が 1 通も送っていないうちは出さない。
+    await expect(page.getByTestId('drivers')).toHaveCount(0)
+
+    await feed(page, telemetryFrame())
+    await expect(page.getByTestId('drivers')).toBeVisible()
+    await expect(page.getByTestId('driver-whill_serial')).toBeVisible()
+
+    // 畳んでいても異常は見える。開く理由に気づけないと意味が無い。
+    await expect(page.getByTestId('telemetry-summary-motor_current_left')).toBeVisible()
+    await expect(
+      page.getByTestId('telemetry-value-summary-motor_current_left'),
+    ).toHaveText('9.20 A')
+
+    await page.screenshot({
+      path: `${SHOT_DIR}/${testInfo.project.name}-drivers.png`,
+      fullPage: true,
+    })
+  })
+
+  test('閾値を超えたドライバが warning 色になる', async ({ page }) => {
+    // Phase 5 の受け入れ条件そのもの。色は gateway が付けた level から引く
+    // （UI 側で閾値を評価し直さない）。
+    await openWithToken(page)
+    await feed(page, telemetryFrame())
+    await expect(page.getByTestId('driver-whill_serial')).toHaveClass(/level-warn/)
+
+    await feed(page, telemetryFrame({
+      drivers: [{
+        driver: 'whill_serial', expected: true,
+        items: [{ name: 'battery', value: 10, unit: '%', widget: 'bar',
+                  level: 'crit', warn: 30, crit: 15, compare: 'below', age: 0.1 }],
+      }],
+    }))
+    await expect(page.getByTestId('driver-whill_serial')).toHaveClass(/level-crit/)
+  })
+
+  test('起動していないドライバがそう分かる', async ({ page }) => {
+    // 「センサが壊れた」のか「launch に入っていない」のかを切り分けるため
+    await openWithToken(page)
+    await feed(page, telemetryFrame())
+    await expect(page.getByTestId('driver-down-velodyne')).toHaveText('起動していない')
+    // 既定で起動しないものは赤くしない。起動していなくて当たり前。
+    await expect(page.getByTestId('driver-off-realsense')).toHaveText('対象外')
+    await expect(page.getByTestId('driver-realsense')).not.toHaveClass(/level-crit/)
+  })
+
+  test('展開すると全項目が出る', async ({ page }) => {
+    await openWithToken(page)
+    await feed(page, telemetryFrame())
+    await expect(page.getByTestId('driver-detail-whill_serial')).toHaveCount(0)
+
+    await page.getByTestId('driver-toggle-whill_serial').click()
+    const detail = page.getByTestId('driver-detail-whill_serial')
+    await expect(detail).toBeVisible()
+    await expect(detail.getByTestId('telemetry-battery')).toBeVisible()
+    // バッテリーは棒でも出す。数字だけだと残量の感覚が掴めない。
+    await expect(detail.getByTestId('telemetry-bar-battery')).toBeVisible()
+  })
+
+  test('値が無いところを 0 で描かない', async ({ page }) => {
+    // バッテリー 0 % と「バッテリー不明」を同じ絵にするのが一番まずい誤読
+    await openWithToken(page)
+    await feed(page, telemetryFrame())
+    await page.getByTestId('driver-toggle-velodyne').click()
+    await expect(page.getByTestId('telemetry-value-points_per_scan')).toHaveText('—')
+    await expect(page.getByTestId('telemetry-bar-points_per_scan')).toHaveCount(0)
+  })
+
+  test('途絶えた値は残したまま古さを添える', async ({ page }) => {
+    // 消すと「不明」と区別が付かず、そのままだと最新に見える
+    await openWithToken(page)
+    await feed(page, telemetryFrame())
+    await page.getByTestId('driver-toggle-rt_9axis').click()
+    const detail = page.getByTestId('driver-detail-rt_9axis')
+    await expect(detail.getByTestId('telemetry-value-temp')).toHaveText('34.03 degC')
+    await expect(detail.getByTestId('telemetry-age-temp')).toHaveText('12 秒前')
+  })
+
+  test('level を色だけでなく文字でも出す', async ({ page }) => {
+    // 屋外のタブレットで輝度と角度に負ける。色覚の差もある。
+    await openWithToken(page)
+    await feed(page, telemetryFrame())
+    await expect(
+      page.getByTestId('driver-whill_serial').locator('.badge.level-warn'),
+    ).toHaveText('注意')
+  })
 })

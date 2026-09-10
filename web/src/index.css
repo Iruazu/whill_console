@@ -202,6 +202,84 @@ body {
 
 .muted { color: var(--muted); font-size: 12px; }
 
+/* ---- ドライバ ---------------------------------------------------------- */
+
+.panel.drivers { flex: none; }
+
+.driver {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 6px;
+  /* 状態を色だけで伝えない（屋外のタブレットで輝度と角度に負ける）。
+     左端の帯は色の補助であって、判断は badge の文字でできること。 */
+  border-left-width: 3px;
+}
+.driver.level-ok { border-left-color: var(--ok); }
+.driver.level-warn { border-left-color: var(--warn); }
+.driver.level-crit { border-left-color: var(--crit); }
+.driver.level-stale { border-left-color: var(--muted); }
+.driver.level-unknown { border-left-color: var(--border); }
+
+.driver-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  flex-wrap: wrap;
+}
+.driver-caret { color: var(--muted); width: 10px; }
+.driver-name { font-weight: 600; font-size: 13px; }
+
+.badge.level-ok { color: var(--ok); border-color: var(--ok); }
+.badge.level-warn { color: var(--warn); border-color: var(--warn); }
+.badge.level-crit { color: var(--crit); border-color: var(--crit); }
+.badge.level-stale { color: var(--muted); border-color: var(--muted); }
+
+.driver-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 8px 8px 21px;
+  border-top: 1px solid var(--border);
+}
+
+.reading { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.reading-name { color: var(--muted); }
+.reading.compact .reading-name { display: none; }
+.reading-value {
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, monospace;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.reading.level-warn .reading-value { color: var(--warn); }
+.reading.level-crit .reading-value { color: var(--crit); }
+/* 途絶えた値は薄くする。消すと「不明」と区別が付かず、そのままだと最新に見える。 */
+.reading.level-stale .reading-value { color: var(--muted); }
+.reading.level-unknown .reading-value { color: var(--muted); }
+.reading-age { color: var(--muted); font-size: 11px; }
+
+.heading-arrow { display: inline-block; }
+
+.reading-bar {
+  flex: 1;
+  max-width: 120px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+.reading-fill { display: block; height: 100%; background: var(--accent); }
+.reading.level-warn .reading-fill { background: var(--warn); }
+.reading.level-crit .reading-fill { background: var(--crit); }
+
 .overview-controls {
   display: flex;
   align-items: center;
