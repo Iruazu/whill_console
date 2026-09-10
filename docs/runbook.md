@@ -149,6 +149,12 @@ whill params probe --key controller_server.FollowPath.min_lookahead_dist
 # 直せばよいかが分かる
 whill latency --repeats 20
 
+# 仮想障害物を置く / 消す (Web からの操作は Phase 4 の後続 issue)
+ros2 topic pub --once /whill/virtual_obstacles whill_msgs/msg/VirtualObstacleArray \
+  '{header: {frame_id: map}, obstacles: [{id: t1, frame_id: map, center: {x: 4.0, y: 0.0}, radius: 1.0}]}'
+ros2 topic pub --once /whill/virtual_obstacles whill_msgs/msg/VirtualObstacleArray \
+  '{header: {frame_id: map}, obstacles: []}'    # 全消去
+
 # registry から生成した Nav2 params が既存スタックと一致するか
 # (Phase 1 の受け入れ条件。差分ゼロなら exit 0)
 ros2 run whill_params generate_nav2_params --robot cr2-01 --check
@@ -274,6 +280,8 @@ skip の理由がログに出る（全部 skip されて緑、を見逃さない
 | stackd で止めたのにノードが残る | `ros2 node list` で確認する。残るならプロセスグループが作れていない環境。`docs/open-questions.md` に追記して止まること。 |
 | ブラウザに「gateway error: 認証に失敗した」と出る | トークンが違う。localStorage の `whill.gateway.token` を消して入れ直す（devtools か、アプリのトークン入力に戻る）。 |
 | 画面は出るが何も届かない | 上部帯の接続状態を見る。`disconnected` なら gateway が落ちている、`error` なら理由が出ている。 |
+| 仮想障害物を置いても経路が変わらない | `global_costmap.virtual_obstacles_enabled` が true か確認する。層の追加は再起動が要る（live: false）。起動ログに `Using plugin "whill_virtual_obstacles"` が出ているかも見る。 |
+| 消したのに障害物が残る | Nav2 のリカバリでは消えない設計（人が置いたものを勝手に消さない）。空配列を publish すること。 |
 | gateway が `address already in use` で落ちる | 前回のプロセスが残っている。`ss -ltnp \| grep 8765` で PID を見て落とす。 |
 | `mode=real` / `mode=sim` で例外が出る | 未配線。仕様どおり（黙って起動しないより落とす）。`docs/open-questions.md` K5。 |
 

@@ -19,6 +19,6 @@
 
   <export>
     <build_type>ament_cmake</build_type>
-    <!-- Phase 4 でプラグイン登録 xml を追加する -->
+    <nav2_costmap_2d plugin="${prefix}/whill_costmap_plugins.xml" />
   </export>
 </package>
