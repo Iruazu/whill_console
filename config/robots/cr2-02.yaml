@@ -1,0 +1,73 @@
+# cr2-01 — 個体差。cr2-base.yaml を上書きする。
+#
+# この個体はまだ手元にない。tf_static とハードウェア識別子は cr2-01 からの
+# 暫定コピーであり、measured は全て false。実車が来たら採寸して置き換えること
+# （docs/open-questions.md の実機検証待ちリストに登録済み）。
+
+schema_version: 1
+robot_id: cr2-02
+display_name: CR2-02
+model: WHILL Model CR2
+ros_domain_id: 22
+
+hardware:
+  whill_serial:
+    # udev で VID:PID 067b:2303 から張る symlink。ポート番号は使わない
+    # （USB ポートを差し替えると /dev/ttyUSB* の番号が動くため）。
+    port: /dev/whill-02
+    baudrate: 38400
+    stop_bits: 2
+    publish_interval_ms: 400
+  velodyne:
+    device_ip: 192.168.1.202
+    host_ip: 192.168.1.100
+    host_interface: null   # 実車の USB-Ethernet アダプタ未定
+    port: 2368
+    model: VLP16
+  bno085:
+    # 現車に載っているのは RT-USB-9AXIS-00（CDC-ACM, VID:PID 2b72:0003）。
+    # bno085 への換装可否は docs/open-questions.md Q1 で確認待ち。
+    port: /dev/imu-02
+    frame_id: imu_link
+  realsense:
+    serial: null            # 未取得。実機復帰後に rs-enumerate-devices で確認する
+    model: D435
+
+# base_link 基準の静的 TF。単位は m / rad。
+tf_static:
+  imu_link:
+    parent: base_link
+    xyz: [0.20, 0.0, 0.42]
+    rpy: [0.0, 0.0, 0.0]
+    measured: false
+    note: 座面上、車体中心線上。左アームレスト内面から約 22 cm。
+  velodyne:
+    parent: base_link
+    xyz: [0.42, 0.36, 0.78]
+    rpy: [0.0, 0.157, 0.0]
+    measured: false
+    note: >-
+      Y と Z は採寸済み（左アームレスト外面から水平 8 cm / 垂直 10 cm）。
+      X（前後）は未採寸でアームレスト前端から推定した値。pitch +9deg は noetic 由来。
+  camera_link:
+    parent: velodyne
+    xyz: [0.0, 0.0, -0.103]
+    rpy: [0.0, 0.0, 0.0]
+    measured: false
+    note: 3Dプリント製ブラケット約 103 mm。回転は identity 仮置き。ヨー/ロールは未計測。
+  base_footprint:
+    parent: base_link
+    xyz: [0.0, 0.0, -0.1175]
+    rpy: [0.0, 0.0, 0.0]
+    measured: false
+    note: 接地面。
+
+# cr2-base の telemetry 閾値をこの個体だけ上書きする場合に書く。
+telemetry_overrides: {}
+
+# この個体に紐づく地図。既存リポの成果物を参照する。
+maps:
+  default: campus_v2
+  campus_v2:
+    source_repo: ~/whill_lab0_ros2
+    occupancy: docs/maps/campus/v2/occupancy_v2.yaml

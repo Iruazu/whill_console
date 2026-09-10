@@ -1,0 +1,31 @@
+# 再生用 MCAP。README だけ残す (計 45 GB を git に入れない)
+bags/*
+!bags/README.md
+
+# colcon
+ros/build/
+ros/install/
+ros/log/
+
+# uv
+services/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# pnpm / vite / playwright
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
+web/.vite/
+
+# 生成物。scripts/make_mock_map.py が作り直せる
+ros/src/whill_bringup/config/mock_corridor.pgm
+ros/src/whill_bringup/config/mock_corridor.yaml
+
+# OS / editor
+.DS_Store
+*.swp
+web/tsconfig.tsbuildinfo

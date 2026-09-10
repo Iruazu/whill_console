@@ -1,0 +1,126 @@
+"""registry から Nav2 の params yaml を生成する。
+
+既存 `whill_lab0_ros2/src/whill_navigation/config/nav2_params.yaml` を
+テンプレートとして読み、registry が管理しているキーだけを差し替える。全文を
+ゼロから組み立てないのは、Nav2 の params には registry に載せる価値のない
+定型（plugin 名の羅列、BT の xml パス等）が大量にあり、それを二重管理すると
+必ず食い違うため。registry は「人が触る値」だけを持つ。
+
+Phase 1 の受け入れ条件:
+    テンプレートに対して --check を走らせ、既定値のみで差分ゼロになること。
+"""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import difflib
+import sys
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from whill_params import registry as reg
+
+DEFAULT_TEMPLATE = Path('~/whill_lab0_ros2/src/whill_navigation/config/nav2_params.yaml')
+
+
+def _set_nested(root: dict[str, Any], node: str, dotted: str, value: Any) -> bool:
+    """Nav2 params の `<node>: ros__parameters: <a>: <b>` へ値を書く。
+
+    書けたら True。テンプレートに該当パスが無ければ False（登録ミスの検出用）。
+    """
+    node_block = root.get(node)
+    if not isinstance(node_block, dict):
+        return False
+    cursor = node_block.get('ros__parameters')
+    if not isinstance(cursor, dict):
+        return False
+
+    parts = dotted.split('.')
+    for part in parts[:-1]:
+        nxt = cursor.get(part)
+        if not isinstance(nxt, dict):
+            return False
+        cursor = nxt
+    if parts[-1] not in cursor:
+        return False
+    cursor[parts[-1]] = copy.deepcopy(value)
+    return True
+
+
+def render(robot_id: str, template_path: Path, preset: str | None = None) -> tuple[str, list[str]]:
+    """生成後の yaml 文字列と、テンプレートに反映できなかったキーを返す。"""
+    with template_path.open(encoding='utf-8') as handle:
+        template = yaml.safe_load(handle)
+
+    registry = reg.load(robot_id, preset=preset)
+    unmapped: list[str] = []
+    for key, value in registry.values.items():
+        node, _, dotted = key.partition('.')
+        # gateway 等 Nav2 の管轄外ノードはテンプレートに存在しなくて当然
+        if node not in template:
+            continue
+        if not _set_nested(template, node, dotted, value):
+            unmapped.append(key)
+
+    text = yaml.safe_dump(template, allow_unicode=True, sort_keys=False,
+                          default_flow_style=False, width=100)
+    return text, sorted(unmapped)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog='generate_nav2_params',
+        description='config/ の registry から Nav2 params を生成する')
+    parser.add_argument('--robot', default='cr2-01', help='個体 ID (既定 cr2-01)')
+    parser.add_argument('--preset', default=None, help='適用する preset 名')
+    parser.add_argument('--template', type=Path, default=DEFAULT_TEMPLATE,
+                        help='ベースにする既存 nav2_params.yaml')
+    parser.add_argument('-o', '--output', type=Path, default=None,
+                        help='出力先。省略時は標準出力')
+    parser.add_argument('--check', action='store_true',
+                        help='書き出さず、テンプレートとの意味的な差分だけ報告する')
+    args = parser.parse_args(argv)
+
+    template_path = args.template.expanduser()
+    if not template_path.is_file():
+        print(f'テンプレートが無い: {template_path}', file=sys.stderr)
+        return 2
+
+    try:
+        text, unmapped = render(args.robot, template_path, args.preset)
+    except reg.RegistryError as exc:
+        print(f'registry エラー: {exc}', file=sys.stderr)
+        return 2
+
+    for key in unmapped:
+        print(f'警告: テンプレートに該当パスが無い: {key}', file=sys.stderr)
+
+    if args.check:
+        with template_path.open(encoding='utf-8') as handle:
+            original = yaml.safe_load(handle)
+        generated = yaml.safe_load(text)
+        if original == generated:
+            print('差分なし')
+            return 0
+        # コメントや並び順ではなく値の差だけを見たいので、正規化してから比較する
+        diff = difflib.unified_diff(
+            yaml.safe_dump(original, allow_unicode=True, sort_keys=True).splitlines(),
+            yaml.safe_dump(generated, allow_unicode=True, sort_keys=True).splitlines(),
+            fromfile='template', tofile='generated', lineterm='')
+        print('\n'.join(diff))
+        return 1
+
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(text, encoding='utf-8')
+        print(f'書き出した: {args.output}')
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

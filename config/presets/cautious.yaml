@@ -1,0 +1,12 @@
+# cautious — 人の多い屋内・初回検証用。速度と旋回を落とし、障害物から広く取る。
+# 迷ったらこれ。実機で新しい経路を初めて走らせるときの既定。
+schema_version: 1
+name: cautious
+description: 低速・広マージン。人が多い場所と初回走行向け。
+overrides:
+  controller_server.FollowPath.desired_linear_vel: 0.2
+  controller_server.FollowPath.rotate_to_heading_angular_vel: 0.3
+  velocity_smoother.max_velocity: [0.2, 0.0, 0.4]
+  velocity_smoother.max_accel: [0.2, 0.0, 0.8]
+  local_costmap.inflation_layer.inflation_radius: 0.8
+  global_costmap.inflation_layer.inflation_radius: 0.8

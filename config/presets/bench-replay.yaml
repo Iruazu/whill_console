@@ -1,0 +1,11 @@
+# bench-replay — bag 再生と mock でのみ使う。実機には絶対に適用しない。
+# costmap の publish を上げて UI の描画を見やすくするだけの設定で、
+# 実機ではこのレートは CPU を食い潰す。
+schema_version: 1
+name: bench-replay
+description: 再生・mock 専用。描画レートを上げる。実機禁止。
+real_robot_allowed: false
+overrides:
+  local_costmap.publish_frequency: 5.0
+  global_costmap.publish_frequency: 2.0
+  whill_gateway.costmap_publish_rate: 5.0

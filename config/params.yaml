@@ -1,0 +1,473 @@
+# whill_platform — パラメータ registry（3台共通の単一ソース）
+#
+# ここが設定の一次情報。個体差は config/robots/cr2-0N.yaml が上書きし、
+# 一時的な実験値は config/presets/*.yaml とスライダーが上書きする。
+# 優先度: params.yaml < robots/*.yaml < presets/*.yaml < スライダー
+#
+# 各エントリの意味:
+#   node          ROS ノード名（Nav2 の場合は params の第 1 階層キーと一致させる）
+#   name          ノード内のパラメータ名。Nav2 プラグインは "FollowPath.xxx" の形で書く
+#   type          double | int | bool | string | double_array
+#   default       既定値。whill_params が Nav2 params 生成時にこれを流し込む
+#   range         min / max / step。UI スライダーの範囲かつ ParameterDescriptor の制約
+#   unit          表示用。無次元は null
+#   live          true = 走行中に ros2 param set で即時反映できる
+#                 false = ノード再起動が必要（UI では "restart" バッジ）
+#   safety_class  none               … 自由に変更してよい
+#                 caution            … 変更は挙動に効く。UI が確認ダイアログを出す
+#                 locked_while_moving… 走行中は gateway が拒否する
+#   description   なぜこの値なのか。UI のツールチップにそのまま出る
+#
+# 値の由来は whill_lab0_ros2 の実測チューニング（#101 / 07-19〜07-22 field）。
+# Phase 1 の受け入れ条件は「ここから生成した nav2_params.yaml が既存と差分ゼロ」。
+
+schema_version: 1
+
+params:
+  # ---- controller_server / RegulatedPurePursuit ------------------------------
+  - node: controller_server
+    name: FollowPath.desired_linear_vel
+    type: double
+    default: 0.3
+    range: {min: 0.05, max: 1.0, step: 0.01}
+    unit: m/s
+    live: true
+    safety_class: locked_while_moving
+    description: >-
+      RPP が出す目標直進速度。着座した人を乗せて 0.3 m/s が安全な巡航。0.5 m/s
+      以上は実機で「がくつき」として体感された。WHILL Mode 2 の物理上限は約 1.1 m/s。
+
+  - node: controller_server
+    name: FollowPath.max_linear_accel
+    type: double
+    default: 0.3
+    range: {min: 0.05, max: 1.0, step: 0.01}
+    unit: m/s^2
+    live: false
+    safety_class: caution
+    description: >-
+      humble の RPP はこの値を自分では強制しない（desired_linear_vel を直接指令する）。
+      実際の加速度制限は velocity_smoother の max_accel が担う。ここは記録用。
+
+  - node: controller_server
+    name: FollowPath.lookahead_dist
+    type: double
+    default: 0.8
+    range: {min: 0.2, max: 2.0, step: 0.05}
+    unit: m
+    live: true
+    safety_class: caution
+    description: >-
+      use_velocity_scaled_lookahead_dist が true のため実効値は min/max に丸められる。
+      この値そのものは殆ど効かない。調整は min_lookahead_dist 側で行うこと。
+
+  - node: controller_server
+    name: FollowPath.min_lookahead_dist
+    type: double
+    default: 0.6
+    range: {min: 0.2, max: 1.5, step: 0.05}
+    unit: m
+    live: true
+    safety_class: caution
+    description: >-
+      左右振動（#101）の直接原因。0.3 では実効 lookahead が 0.42 m まで縮み、
+      観測された蛇行の波長 0.58 m を下回って正帰還した。0.6 は波長を上回る下限。
+
+  - node: controller_server
+    name: FollowPath.max_lookahead_dist
+    type: double
+    default: 0.9
+    range: {min: 0.3, max: 2.0, step: 0.05}
+    unit: m
+    live: true
+    safety_class: caution
+    description: 速度スケール lookahead の上限。曲率の急な箇所で先を見過ぎないための蓋。
+
+  - node: controller_server
+    name: FollowPath.lookahead_time
+    type: double
+    default: 1.5
+    range: {min: 0.5, max: 3.0, step: 0.1}
+    unit: s
+    live: true
+    safety_class: caution
+    description: 実効 lookahead = 現在速度 × この時間（min/max でクランプ）。
+
+  - node: controller_server
+    name: FollowPath.rotate_to_heading_angular_vel
+    type: double
+    default: 0.4
+    range: {min: 0.1, max: 1.2, step: 0.05}
+    unit: rad/s
+    live: true
+    safety_class: locked_while_moving
+    description: >-
+      0.8 → 0.4 に下げた（停滞時ハンチングの制動）。速いと scan-to-map localizer が
+      回転中に追従を落とす。上げる場合は localization の劣化とセットで見ること。
+
+  - node: controller_server
+    name: FollowPath.rotate_to_heading_min_angle
+    type: double
+    default: 1.57
+    range: {min: 0.2, max: 3.14, step: 0.01}
+    unit: rad
+    live: true
+    safety_class: caution
+    description: yaw_goal_tolerance が π のため実運用では発動しない。将来 tolerance を締めたとき効く。
+
+  - node: controller_server
+    name: FollowPath.max_angular_accel
+    type: double
+    default: 1.0
+    range: {min: 0.2, max: 3.0, step: 0.1}
+    unit: rad/s^2
+    live: false
+    safety_class: caution
+    description: 角加速度上限。実効的には velocity_smoother 側が支配する。
+
+  - node: controller_server
+    name: FollowPath.use_rotate_to_heading
+    type: bool
+    default: true
+    range: null
+    unit: null
+    live: false
+    safety_class: caution
+    description: 経路始端でその場旋回して向きを合わせる。false にすると円弧で寄せる。
+
+  - node: controller_server
+    name: FollowPath.use_velocity_scaled_lookahead_dist
+    type: bool
+    default: true
+    range: null
+    unit: null
+    live: false
+    safety_class: caution
+    description: true のとき lookahead_dist は無視され min/max/time から算出される。
+
+  - node: controller_server
+    name: FollowPath.cost_scaling_dist
+    type: double
+    default: 0.3
+    range: {min: 0.1, max: 1.0, step: 0.05}
+    unit: m
+    live: true
+    safety_class: caution
+    description: 障害物近傍で速度を落とし始める距離。
+
+  - node: controller_server
+    name: FollowPath.cost_scaling_gain
+    type: double
+    default: 1.0
+    range: {min: 0.1, max: 3.0, step: 0.1}
+    unit: null
+    live: true
+    safety_class: caution
+    description: >-
+      障害物近傍の減速の強さ。cost_scaling_dist と対で効く。上げると壁際で
+      過度に減速して停滞判定に入りやすくなるため、1.0 から動かすなら
+      cost_scaling_dist を広げるほうを先に試すこと。
+
+  - node: controller_server
+    name: FollowPath.transform_tolerance
+    type: double
+    default: 0.3
+    range: {min: 0.05, max: 1.0, step: 0.05}
+    unit: s
+    live: false
+    safety_class: caution
+    description: >-
+      scan-to-map localizer が map->odom を約 10 Hz で publish するため 0.3 s が必要。
+      bt_navigator / behavior_server と必ず同値にすること。ばらけると TF 参照が食い違う。
+
+  - node: controller_server
+    name: general_goal_checker.xy_goal_tolerance
+    type: double
+    default: 0.5
+    range: {min: 0.1, max: 2.0, step: 0.05}
+    unit: m
+    live: true
+    safety_class: caution
+    description: 到達判定の位置許容。屋外キャンパスの localization 精度に合わせて広め。
+
+  - node: controller_server
+    name: general_goal_checker.yaw_goal_tolerance
+    type: double
+    default: 3.15
+    range: {min: 0.05, max: 3.15, step: 0.05}
+    unit: rad
+    live: true
+    safety_class: caution
+    description: >-
+      実質「向きは問わない」設定（π 超）。配車用途では到達後の向き合わせが不要で、
+      無理に合わせると localizer が回転で劣化するため意図的にこの値。
+
+  # ---- velocity_smoother ----------------------------------------------------
+  - node: velocity_smoother
+    name: max_velocity
+    type: double_array
+    default: [0.3, 0.0, 0.5]
+    range: null
+    # 差動二輪なので vy は構造的に 0 固定。軸ごとに範囲が違うため elements で持つ。
+    elements:
+      - {label: vx,   range: {min: 0.05, max: 1.1,  step: 0.05}}
+      - {label: vy,   range: {min: 0.0,  max: 0.0,  step: 0.05}}
+      - {label: vyaw, range: {min: 0.1,  max: 1.5,  step: 0.05}}
+    unit: "[m/s, m/s, rad/s]"
+    live: true
+    safety_class: locked_while_moving
+    description: >-
+      [vx, vy, vyaw] の上限。vx は RPP の desired_linear_vel と揃える。差があると
+      滑らかさが崩れるか、逆に頭打ちして経路追従が遅れる。
+
+  - node: velocity_smoother
+    name: min_velocity
+    type: double_array
+    default: [-0.1, 0.0, -0.8]
+    range: null
+    elements:
+      - {label: vx,   range: {min: -0.5, max: 0.0, step: 0.05}}
+      - {label: vy,   range: {min: 0.0,  max: 0.0, step: 0.05}}
+      - {label: vyaw, range: {min: -1.5, max: 0.0, step: 0.05}}
+    unit: "[m/s, m/s, rad/s]"
+    live: true
+    safety_class: locked_while_moving
+    description: backup リカバリ用の小さな後退帯。0 にすると後退リカバリが死ぬ。
+
+  - node: velocity_smoother
+    name: max_accel
+    type: double_array
+    default: [0.3, 0.0, 1.0]
+    range: null
+    elements:
+      - {label: ax,   range: {min: 0.05, max: 1.0, step: 0.05}}
+      - {label: ay,   range: {min: 0.0,  max: 0.0, step: 0.05}}
+      - {label: ayaw, range: {min: 0.2,  max: 3.0, step: 0.1}}
+    unit: "[m/s^2, m/s^2, rad/s^2]"
+    live: true
+    safety_class: locked_while_moving
+    description: >-
+      実機の乗り心地を決める最重要値。RPP は加速度を守らないので、ここが唯一の
+      ランプ制御。0.3 m/s^2 = 0.3 m/s まで約 1 秒。上げると発進が蹴られる感触になる。
+
+  - node: velocity_smoother
+    name: max_decel
+    type: double_array
+    default: [-0.5, 0.0, -1.0]
+    range: null
+    elements:
+      - {label: ax,   range: {min: -2.0, max: -0.05, step: 0.05}}
+      - {label: ay,   range: {min: 0.0,  max: 0.0,   step: 0.05}}
+      - {label: ayaw, range: {min: -3.0, max: -0.2,  step: 0.1}}
+    unit: "[m/s^2, m/s^2, rad/s^2]"
+    live: true
+    safety_class: caution
+    description: 安全側なので加速より速く落とす。絶対値を加速度より小さくしないこと。
+
+  # ---- costmaps -------------------------------------------------------------
+  - node: local_costmap
+    name: inflation_layer.inflation_radius
+    type: double
+    default: 0.6
+    range: {min: 0.1, max: 2.0, step: 0.05}
+    unit: m
+    live: true
+    safety_class: caution
+    description: >-
+      robot_radius 0.45 を超えるまで拡げた値（0.4 → 0.6、07-21 field）。
+      robot_radius 未満にすると footprint が収まらない隙間を経路が通り抜ける。
+
+  - node: local_costmap
+    name: inflation_layer.cost_scaling_factor
+    type: double
+    default: 4.0
+    range: {min: 1.0, max: 10.0, step: 0.5}
+    unit: null
+    live: true
+    safety_class: caution
+    description: >-
+      6.0 は勾配が急すぎて端近傍もすぐ低コスト化し、最短経路が走行可能域の端を這った。
+      4.0 でコストの丘を広げ、経路を中央寄りにする。
+
+  - node: local_costmap
+    name: robot_radius
+    type: double
+    default: 0.45
+    range: {min: 0.2, max: 0.9, step: 0.01}
+    unit: m
+    live: false
+    safety_class: locked_while_moving
+    description: >-
+      円 footprint 近似。URDF の実測（base_floor 0.985 × 0.37 m）に合わせて
+      polygon footprint へ移行するのが本来。移行するまでは前方張り出しを過小評価する。
+
+  - node: local_costmap
+    name: resolution
+    type: double
+    default: 0.05
+    range: {min: 0.02, max: 0.2, step: 0.01}
+    unit: m/cell
+    live: false
+    safety_class: caution
+    description: 地図 v2 パイプラインの解像度と一致させること。ずれると障害物が滲む。
+
+  - node: local_costmap
+    name: update_frequency
+    type: double
+    default: 5.0
+    range: {min: 0.5, max: 20.0, step: 0.5}
+    unit: Hz
+    live: false
+    safety_class: none
+    description: local costmap の更新周期。実機PC の CPU 余力と相談。
+
+  - node: local_costmap
+    name: publish_frequency
+    type: double
+    default: 2.0
+    range: {min: 0.5, max: 10.0, step: 0.5}
+    unit: Hz
+    live: false
+    safety_class: none
+    description: >-
+      gateway が俯瞰図に流す元レート。上げると Web 側の帯域が増えるので、
+      UI のなめらかさが欲しいときは gateway の差分送信を調整するほうが先。
+
+  - node: global_costmap
+    name: inflation_layer.inflation_radius
+    type: double
+    default: 0.6
+    range: {min: 0.1, max: 2.0, step: 0.05}
+    unit: m
+    live: true
+    safety_class: caution
+    description: local と揃える。片方だけ変えると計画と追従で通れる幅が食い違う。
+
+  - node: global_costmap
+    name: inflation_layer.cost_scaling_factor
+    type: double
+    default: 4.0
+    range: {min: 1.0, max: 10.0, step: 0.5}
+    unit: null
+    live: true
+    safety_class: caution
+    description: >-
+      local_costmap と同値にすること。片方だけ勾配を変えると、計画が通る経路を
+      追従側が高コストと見て減速し続ける（07-21 の端這い経路と同じ構図）。
+
+  - node: global_costmap
+    name: robot_radius
+    type: double
+    default: 0.45
+    range: {min: 0.2, max: 0.9, step: 0.01}
+    unit: m
+    live: false
+    safety_class: locked_while_moving
+    description: local_costmap と同値であること。
+
+  - node: global_costmap
+    name: resolution
+    type: double
+    default: 0.05
+    range: {min: 0.02, max: 0.2, step: 0.01}
+    unit: m/cell
+    live: false
+    safety_class: caution
+    description: 保存済み占有格子の解像度と一致させること。
+
+  - node: global_costmap
+    name: update_frequency
+    type: double
+    default: 1.0
+    range: {min: 0.2, max: 10.0, step: 0.2}
+    unit: Hz
+    live: false
+    safety_class: none
+    description: 静的地図が主なので低くてよい。
+
+  - node: global_costmap
+    name: publish_frequency
+    type: double
+    default: 1.0
+    range: {min: 0.2, max: 10.0, step: 0.2}
+    unit: Hz
+    live: false
+    safety_class: none
+    description: 全域 OccupancyGrid は重い。上げる前に gateway の RLE 圧縮率を見ること。
+
+  # ---- bt_navigator / behavior_server ---------------------------------------
+  - node: bt_navigator
+    name: transform_tolerance
+    type: double
+    default: 0.3
+    range: {min: 0.05, max: 1.0, step: 0.05}
+    unit: s
+    live: false
+    safety_class: caution
+    description: controller_server と同値にすること。
+
+  - node: behavior_server
+    name: transform_tolerance
+    type: double
+    default: 0.3
+    range: {min: 0.05, max: 1.0, step: 0.05}
+    unit: s
+    live: false
+    safety_class: caution
+    description: controller_server と同値にすること。
+
+  # ---- whill_gateway --------------------------------------------------------
+  - node: whill_gateway
+    name: manual_heartbeat_timeout
+    type: double
+    default: 0.5
+    range: {min: 0.1, max: 2.0, step: 0.1}
+    unit: s
+    live: false
+    safety_class: locked_while_moving
+    description: >-
+      手動速度指令のハートビートが途切れてから速度ゼロにするまでの猶予。
+      設計原則 4。Wi-Fi 断でも車体が走り続けないための最後の砦なので、
+      遅延の実測値が大きくても安易に伸ばさない。
+
+  - node: whill_gateway
+    name: costmap_publish_rate
+    type: double
+    default: 2.0
+    range: {min: 0.2, max: 10.0, step: 0.2}
+    unit: Hz
+    live: true
+    safety_class: none
+    description: WebSocket へ costmap を流す上限レート。実機PC の CPU 負荷は実機検証待ち。
+
+  - node: whill_gateway
+    name: image_publish_rate
+    type: double
+    default: 1.0
+    range: {min: 0.1, max: 5.0, step: 0.1}
+    unit: Hz
+    live: true
+    safety_class: none
+    description: 圧縮画像のレート制限。俯瞰図より優先度が低いので既定は低く。
+
+  - node: whill_gateway
+    name: bind_address
+    type: string
+    default: "0.0.0.0"
+    range: null
+    unit: null
+    live: false
+    safety_class: locked_while_moving
+    description: >-
+      LAN 限定で使う前提。グローバルに晒さないこと。認証は固定トークン
+      （環境変数 WHILL_GATEWAY_TOKEN）のみで、それ以上の防御はない。
+
+  - node: whill_gateway
+    name: port
+    type: int
+    default: 8765
+    range: {min: 1024, max: 65535, step: 1}
+    unit: null
+    live: false
+    safety_class: none
+    description: WebSocket の待ち受けポート。

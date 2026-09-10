@@ -1,0 +1,104 @@
+/* dev レイアウトは暗色固定。屋外運用の ops レイアウトで明色が要るかは
+   実機でタブレットの視認性を見てから決める（実機検証待ち）。 */
+:root {
+  --bg: #14171c;
+  --panel: #1c2027;
+  --border: #2b313a;
+  --text: #e6e9ee;
+  --muted: #8b95a3;
+  --ok: #4ec9a0;
+  --warn: #e0b64a;
+  --crit: #e06c5a;
+  --accent: #5aa9e0;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, "Noto Sans JP", sans-serif;
+  font-size: 14px;
+}
+
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.topbar .robot { font-weight: 600; }
+.topbar .spacer { flex: 1; }
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}
+.badge.mode-mock { color: var(--accent); border-color: var(--accent); }
+.badge.mode-real { color: var(--crit); border-color: var(--crit); }
+.badge.state-ok { color: var(--ok); border-color: var(--ok); }
+.badge.state-down { color: var(--crit); border-color: var(--crit); }
+
+.estop {
+  background: var(--crit);
+  color: #14171c;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.layout { display: flex; flex: 1; min-height: 0; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 8px;
+  padding: 10px;
+  overflow: auto;
+}
+
+.panel h2 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.panel.overview { flex: 2; display: flex; flex-direction: column; }
+.panel.params { flex: 1; min-width: 320px; }
+
+.overview canvas {
+  flex: 1;
+  width: 100%;
+  background: #0f1216;
+  border-radius: 4px;
+}
+
+.placeholder {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* tablet 幅。ops レイアウトは Phase 5 で作るが、崩れ方を早めに見るため
+   ここでブレークポイントだけ先に置く。 */
+@media (max-width: 768px) {
+  .layout { flex-direction: column; }
+  .panel.params { min-width: 0; }
+}

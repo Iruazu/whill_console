@@ -1,0 +1,101 @@
+# cr2-base — WHILL CR 3台に共通のドライバ宣言
+#
+# ここは「どのドライバが何を publish するか」の契約。mock ドライバも実ドライバも
+# この宣言に従う。Phase 0 の受け入れ条件「宣言トピックが ros2 topic list に揃う」は
+# このファイルを正として判定する。
+#
+# 個体差（IP、シリアルポート、TF、domain_id、閾値）は robots/cr2-0N.yaml が上書きする。
+# ここには個体固有の値を書かないこと。
+
+schema_version: 1
+model: WHILL Model CR2
+
+drivers:
+  whill_serial:
+    description: WHILL 本体の RS232C ドライバ。オドメトリと車体状態を出す。
+    real_package: whill_driver
+    mock_node: mock_whill_serial
+    # 実機は cold boot 時に SetPower(ON) → SetJoystick(EnableUser) を先に送らないと
+    # Dataset1 の streaming が始まらない。mock はこの手順を模擬しないが、
+    # ready になるまで publish_interval_ms 相当の遅延を入れて挙動を近づける。
+    cold_boot_sequence: [set_power_on, set_joystick_enable_user]
+    publishes:
+      - {topic: /whill/odom,               type: nav_msgs/msg/Odometry,        rate_hz: 2.5}
+      - {topic: /whill/states/model_cr2,   type: whill_msgs/msg/ModelCr2State, rate_hz: 2.5}
+    subscribes:
+      - {topic: /whill/controller/cmd_vel, type: geometry_msgs/msg/Twist}
+    telemetry:
+      - {name: battery,     topic: /whill/states/model_cr2, field: battery_power,  unit: "%",   widget: bar,     warn: 30,   crit: 15,  compare: below}
+      - {name: motor_current_left,  topic: /whill/states/model_cr2, field: left_motor_current,  unit: A, widget: number, warn: 8.0,  crit: 12.0, compare: above}
+      - {name: motor_current_right, topic: /whill/states/model_cr2, field: right_motor_current, unit: A, widget: number, warn: 8.0,  crit: 12.0, compare: above}
+      - {name: speed_mode,  topic: /whill/states/model_cr2, field: speed_mode_indicator, unit: null, widget: number, warn: null, crit: null, compare: none}
+
+  velodyne:
+    description: VLP-16。Ethernet 接続。best-effort sensor-data QoS で publish する。
+    real_package: velodyne_driver
+    mock_node: mock_velodyne
+    qos: sensor_data
+    publishes:
+      - {topic: /velodyne_points, type: sensor_msgs/msg/PointCloud2, rate_hz: 10.0}
+      - {topic: /scan,            type: sensor_msgs/msg/LaserScan,   rate_hz: 10.0}
+    telemetry:
+      - {name: points_per_scan, topic: /velodyne_points, field: width, unit: pts, widget: number, warn: 12000, crit: 6000, compare: below}
+      - {name: scan_rate,       topic: /velodyne_points, field: __rate, unit: Hz, widget: number, warn: 8.0,   crit: 5.0,  compare: below}
+
+  bno085:
+    description: 9軸 IMU。REP-145 準拠の姿勢付き Imu を出す。
+    real_package: bno085_driver
+    mock_node: mock_bno085
+    publishes:
+      - {topic: /imu/data_rep145, type: sensor_msgs/msg/Imu, rate_hz: 100.0}
+    telemetry:
+      - {name: yaw,       topic: /imu/data_rep145, field: __yaw_deg,  unit: deg, widget: heading, warn: null, crit: null, compare: none}
+      - {name: imu_rate,  topic: /imu/data_rep145, field: __rate,     unit: Hz,  widget: number,  warn: 80.0, crit: 50.0, compare: below}
+      - {name: temp,      topic: /imu/temperature, field: temperature, unit: degC, widget: number, warn: 60.0, crit: 75.0, compare: above}
+
+  realsense:
+    description: D435。開発中は opt-in（既定では起動しない）。CPU 負荷が大きい。
+    real_package: realsense2_camera
+    mock_node: mock_realsense
+    enabled_by_default: false
+    publishes:
+      - {topic: /camera/camera/color/image_raw/compressed, type: sensor_msgs/msg/CompressedImage, rate_hz: 6.0}
+      - {topic: /camera/camera/color/camera_info,          type: sensor_msgs/msg/CameraInfo,      rate_hz: 6.0}
+    telemetry:
+      - {name: frame_rate, topic: /camera/camera/color/image_raw/compressed, field: __rate, unit: Hz, widget: number, warn: 4.0, crit: 2.0, compare: below}
+
+# 派生テレメトリ（単一ドライバに属さないもの）。drivers パネルの最下段に出す。
+derived_telemetry:
+  - name: yaw_vs_ndt
+    description: >-
+      IMU の yaw と scan-to-map localizer の yaw の差。localization 劣化（TF 凍結 →
+      Nav2 abort）の早期検知に使う。実機で最も再発している故障モードなので既定で表示する。
+    inputs: [/imu/data_rep145, /pcl_pose]
+    unit: deg
+    widget: number
+    warn: 10.0
+    crit: 25.0
+    compare: above
+
+# モード別に起動するものの宣言。whill_cli の --mode がこれを引く。
+modes:
+  real:
+    description: 実機ドライバ + 既存 Nav2 スタック
+    drivers: [whill_serial, velodyne, bno085]
+    include_stack: true
+    use_sim_time: false
+  sim:
+    description: Gazebo + 既存 Nav2 スタック
+    drivers: []
+    include_stack: true
+    use_sim_time: true
+  mock:
+    description: モックドライバ + 既存 Nav2 スタック。実機なしで開発するための既定モード。
+    drivers: [whill_serial, velodyne, bno085]
+    include_stack: true
+    use_sim_time: false
+  replay:
+    description: MCAP 再生 + 既存 Nav2 スタック
+    drivers: []
+    include_stack: true
+    use_sim_time: true

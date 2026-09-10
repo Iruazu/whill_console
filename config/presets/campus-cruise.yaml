@@ -1,0 +1,16 @@
+# campus-cruise — 2026-07 のキャンパス実走で収束したチューニング。
+# params.yaml の default と同値。「元に戻す」ボタンの実体として置いてある。
+schema_version: 1
+name: campus-cruise
+description: 07-19〜07-22 field で収束した既定値。params.yaml の default と一致。
+overrides:
+  controller_server.FollowPath.desired_linear_vel: 0.3
+  controller_server.FollowPath.min_lookahead_dist: 0.6
+  controller_server.FollowPath.max_lookahead_dist: 0.9
+  controller_server.FollowPath.rotate_to_heading_angular_vel: 0.4
+  velocity_smoother.max_velocity: [0.3, 0.0, 0.5]
+  velocity_smoother.max_accel: [0.3, 0.0, 1.0]
+  local_costmap.inflation_layer.inflation_radius: 0.6
+  local_costmap.inflation_layer.cost_scaling_factor: 4.0
+  global_costmap.inflation_layer.inflation_radius: 0.6
+  global_costmap.inflation_layer.cost_scaling_factor: 4.0
