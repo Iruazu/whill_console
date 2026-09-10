@@ -32,7 +32,10 @@ import rclpy
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 
+from geometry_msgs.msg import Twist
+
 from whill_gateway import protocol
+from whill_gateway.param_bridge import MovingWatch, ParamBridge
 from whill_gateway.server import Client, GatewayServer
 from whill_gateway.telemetry import Telemetry
 from whill_params import registry as reg
@@ -79,6 +82,15 @@ class Gateway(Node):
         # live パラメータなので、走行中に変えられる。set のたびに反映する。
         self.add_on_set_parameters_callback(self._on_parameters_set)
 
+        # locked_while_moving の門番。走行中かどうかは /cmd_vel で見る。
+        self.moving = MovingWatch()
+        self.create_subscription(Twist, '/cmd_vel', self._on_cmd_vel, 10)
+        self.params = ParamBridge(
+            self, self.registry,
+            loop_getter=lambda: self._loop,
+            moving_watch=self.moving,
+        )
+
         self.create_timer(STATUS_PERIOD_SEC, self._publish_status)
         self.create_timer(TF_SUMMARY_PERIOD_SEC, self.telemetry.publish_tf_summary)
 
@@ -117,6 +129,10 @@ class Gateway(Node):
             )
         return SetParametersResult(successful=True)
 
+    def _on_cmd_vel(self, msg: Twist) -> None:
+        self.moving.observe(msg.linear.x, msg.angular.z,
+                            self.get_clock().now().nanoseconds / 1e9)
+
     def _publish_status(self) -> None:
         server = self.server
         self.emit(protocol.status(
@@ -141,6 +157,29 @@ class Gateway(Node):
         if kind == protocol.MSG_HEARTBEAT:
             # #12 でハートビート監視に繋ぐ。いまは受理だけする。
             return
+
+        if kind == protocol.MSG_PARAM_SET:
+            key = protocol.require(message, 'key', str)
+            if 'value' not in message:
+                raise protocol.ProtocolError('param_set: value が無い')
+            result = await self.params.set_value(
+                key, message['value'], source='slider')
+            client.enqueue(protocol.safe_encode(result))
+            if result['accepted']:
+                # 他のクライアントの画面も追随させる。1 人が変えた値が
+                # 別の画面では古いまま、という状態を作らない。
+                self.emit_now(result)
+            return
+
+        if kind == protocol.MSG_PRESET_APPLY:
+            name = protocol.require(message, 'name', str)
+            results = await self.params.apply_preset(name, source='ui')
+            for result in results:
+                client.enqueue(protocol.safe_encode(result))
+                if result['accepted']:
+                    self.emit_now(result)
+            return
+
         raise protocol.ProtocolError(f'{kind} はまだ実装していない')
 
     async def on_client_connect(self, client: Client) -> None:
@@ -154,6 +193,7 @@ class Gateway(Node):
         await asyncio.sleep(0)  # ハンドラを await 可能に保つ
 
         self._send_snapshot(client)
+        await self._send_params(client)
 
         client.enqueue(protocol.safe_encode(protocol.status(
             robot_id=self.robot_id,
@@ -165,11 +205,35 @@ class Gateway(Node):
             preset=self.registry.applied_preset,
         )))
 
+    def emit_now(self, message: dict[str, Any]) -> None:
+        """asyncio 側から直接ブロードキャストする。
+
+        `emit` は ROS スレッド用（call_soon_threadsafe を挟む）。すでに
+        イベントループ上に居るときにそれを使うと 1 tick 遅れる。
+        """
+        if self.server is not None:
+            self.server.broadcast(message)
+
     def _send_snapshot(self, client: Client) -> None:
         """いま保持している状態のうち、そのクライアントが購読中のものを配る。"""
         for frame in self.telemetry.snapshot():
             if client.wants(frame['type']):
                 client.enqueue(protocol.safe_encode(frame))
+
+    async def _send_params(self, client: Client) -> None:
+        """registry の spec と実ノードの現在値を配る。
+
+        UI はこれを見てスライダーを自動生成する。実ノードが居なくても
+        registry の値で組めるので、失敗しても接続は続ける。
+        """
+        if not client.wants(protocol.MSG_PARAMS):
+            return
+        try:
+            frame = await self.params.params_frame()
+        except Exception as exc:  # noqa: BLE001 - 接続を切るほどではない
+            self.get_logger().warning(f'params の収集に失敗した: {exc}')
+            return
+        client.enqueue(protocol.safe_encode(frame))
 
     async def on_client_subscribe(self, client: Client) -> None:
         """購読を変えた直後に現在の状態を配り直す。
@@ -179,6 +243,7 @@ class Gateway(Node):
         """
         await asyncio.sleep(0)
         self._send_snapshot(client)
+        await self._send_params(client)
 
     async def on_client_disconnect(self, client: Client) -> None:
         """接続が切れたときの後始末。
