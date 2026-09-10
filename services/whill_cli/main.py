@@ -177,6 +177,9 @@ def tap(
     port: int = typer.Option(8765, '--port'),
     seconds: float = typer.Option(5.0, '--seconds', '-s', help='何秒つなぐか'),
     stream: list[str] = typer.Option(None, '--stream', help='購読するストリーム'),
+    set_param: list[str] = typer.Option(
+        None, '--set', help='key=value を送る (param_set の確認用、複数可)'),
+    preset: str = typer.Option('', '--apply-preset', help='preset を適用する'),
     verbose: bool = typer.Option(False, '--verbose', '-v', help='1 通ずつ表示'),
 ) -> None:
     """gateway に繋いでフレームを覗く。
@@ -199,9 +202,20 @@ def tap(
     url = f'ws://{host}:{port}'
     console.print(f'{url} に {seconds:.0f} 秒つなぐ')
 
+    outgoing = []
+    for entry in set_param or []:
+        if '=' not in entry:
+            console.print(f'[red]--set は key=value の形で指定すること: {entry}[/red]')
+            raise typer.Exit(2)
+        key, _, raw = entry.partition('=')
+        outgoing.append({'type': 'param_set', 'key': key, 'value': _parse_value(raw)})
+    if preset:
+        outgoing.append({'type': 'preset_apply', 'name': preset})
+
     try:
         counts = asyncio.run(run_tap(
             url, token, seconds=seconds, streams=list(stream) if stream else None,
+            send=outgoing or None,
             on_frame=(lambda f: console.print(summarize(f))) if verbose else None))
     except TapError as exc:
         console.print(f'[red]{exc}[/red]')
@@ -217,6 +231,18 @@ def tap(
     if not counts:
         console.print('[red]1 通も届かなかった[/red]')
         raise typer.Exit(1)
+
+
+def _parse_value(raw: str):
+    """`--set` の値を JSON として読む。読めなければ文字列のまま。
+
+    `0.5` / `true` / `[0.3, 0.0, 1.0]` を意図どおり送れるようにするため。
+    """
+    import json as _json
+    try:
+        return _json.loads(raw)
+    except _json.JSONDecodeError:
+        return raw
 
 
 # ---- params ----------------------------------------------------------------

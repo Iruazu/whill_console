@@ -23,10 +23,13 @@ class TapError(Exception):
 
 async def tap(url: str, token: str, *, seconds: float,
               streams: list[str] | None = None,
+              send: list[dict[str, Any]] | None = None,
               on_frame=None) -> Counter:
     """`seconds` 秒つないでフレームを数える。
 
     戻り値は type ごとの受信数。`on_frame` を渡すと 1 通ごとに呼ばれる。
+    `send` を渡すと、購読設定のあとにそのフレームを送る（param_set の
+    受理・拒否を確かめるのに使う）。
     """
     import websockets
 
@@ -51,6 +54,9 @@ async def tap(url: str, token: str, *, seconds: float,
 
         if streams:
             await ws.send(json.dumps({'type': 'subscribe', 'streams': streams}))
+
+        for frame in send or []:
+            await ws.send(json.dumps(frame))
 
         deadline = asyncio.get_running_loop().time() + seconds
         while True:
@@ -97,6 +103,14 @@ def summarize(frame: dict[str, Any]) -> str:
         return f"diag     {len(frame['entries'])} 件"
     if kind == 'image':
         return f"image    {frame['format']} {len(frame['data'])} B (base64)"
+    if kind == 'params':
+        return (f"params   {len(frame['params'])} 件 "
+                f"mismatch={len(frame['mismatches'])} "
+                f"unreachable={frame['unreachable']}")
+    if kind == 'param_changed':
+        mark = 'OK' if frame['accepted'] else 'NG'
+        tail = '' if frame['accepted'] else f" ({frame['reason']})"
+        return f"param    {mark} {frame['key']} = {frame['value']}{tail}"
     if kind == 'error':
         return f"error    {frame['reason']}"
     return str(kind)

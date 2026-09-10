@@ -85,6 +85,13 @@ whill tap --seconds 8
 whill tap --seconds 5 --stream tf --stream diagnostics --verbose
 whill tap --host 192.168.1.20 --seconds 5     # 別PC の gateway へ
 
+# パラメータを WebSocket 経由で変えてみる (受理/拒否の確認)
+whill tap --seconds 3 --set 'controller_server.FollowPath.min_lookahead_dist=0.75' -v
+whill tap --seconds 3 --apply-preset cautious -v
+
+# 変更ログ (受理も拒否も残る)
+ros2 topic echo /whill/param_changes
+
 # 個体一覧と TF の採寸状況
 whill robots
 
@@ -157,6 +164,9 @@ skip の理由がログに出る（全部 skip されて緑、を見逃さない
 | gateway は起動しているのにブラウザから繋がらない | `python3-websockets` が入っていないか確認する。入っていると壊れる（ADR-0003）。`python3-aiohttp` を使うこと。 |
 | `whill tap` で costmap が 1 通も来ない | gateway が全量を取りこぼしている可能性。Nav2 は全量を latched で 1 回しか出さないので、gateway より後に Nav2 を起動し直すと届かない。gateway を再起動する。 |
 | 俯瞰図が最初の 1 枚で固まる | `costmap_update` を受けていない。`whill tap --verbose` で `update` 行が出るか確認する。 |
+| `param_set` が「走行中は変更できない」で拒否される | 仕様どおり。`locked_while_moving` のパラメータは走行中に変えられない。停止してから。 |
+| `param_set` が「再起動が必要」で拒否される | `live: false` のパラメータ。`whill params show <key>` で確認できる。ノードを再起動すること。 |
+| UI の値と実際の Nav2 の値が違う | `params` フレームの `mismatches` を見る。`whill tap --stream params -v` で件数が出る。 |
 | gateway が `address already in use` で落ちる | 前回のプロセスが残っている。`ss -ltnp \| grep 8765` で PID を見て落とす。 |
 | `mode=real` / `mode=sim` で例外が出る | 未配線。仕様どおり（黙って起動しないより落とす）。`docs/open-questions.md` K5。 |
 
