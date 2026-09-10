@@ -144,6 +144,11 @@ whill params validate
 whill params probe
 whill params probe --key controller_server.FollowPath.min_lookahead_dist
 
+# スライダー → Nav2 反映の所要時間を測る (受け入れ条件 200 ms)
+# 内訳 (network / validate / service) も出るので、超えたときにどこを
+# 直せばよいかが分かる
+whill latency --repeats 20
+
 # registry から生成した Nav2 params が既存スタックと一致するか
 # (Phase 1 の受け入れ条件。差分ゼロなら exit 0)
 ros2 run whill_params generate_nav2_params --robot cr2-01 --check

@@ -79,7 +79,7 @@ GitHub 側だけ名前を変えた。両者を混同しないこと。
 | 0 | 足場・モックドライバ ✅ | `whill run --robot cr2-01 --mode mock` で Nav2 + mock 起動、宣言トピックが揃う |
 | 1 | パラメータ registry ✅ | yaml 検証・Nav2 params 生成一致が pytest で通る |
 | 2 | gateway と stackd ✅ | 別PC のブラウザから costmap / pose が届く。ハートビート断で速度ゼロ |
-| 3 | Web dev レイアウト | スライダー → Nav2 反映が 200 ms 以内、Playwright スクショ自動保存 |
+| 3 | Web dev レイアウト ✅ | スライダー → Nav2 反映が 200 ms 以内、Playwright スクショ自動保存 |
 | 4 | 仮想障害物と再生 | 仮想障害物で経路が迂回、bag 再生が俯瞰図に再現 |
 | 5 | drivers テレメトリと ops | 閾値超えで warning 色、768px で ops が崩れない |
 | 6 | 周辺（camera / tf / sam_infer） | 後回し可 |

@@ -287,6 +287,82 @@ def manual_drive(
     console.print('[green]完了[/green]')
 
 
+@app.command('latency')
+def measure_latency(
+    host: str = typer.Option('127.0.0.1', '--host'),
+    port: int = typer.Option(8765, '--port'),
+    repeats: int = typer.Option(10, '--repeats', '-n', help='各キー何回測るか'),
+    budget: float = typer.Option(
+        200.0, '--budget', help='受け入れ条件 (ms)。超えたら失敗にする'),
+) -> None:
+    """スライダー → Nav2 反映の所要時間を測る。
+
+    Phase 3 の受け入れ条件（200 ms 以内）を数字で確かめる。内訳（ネットワーク /
+    gateway の検査 / Nav2 の応答）も出すので、超えたときにどこを直せばよいかが
+    分かる。
+
+    測るのは live なパラメータ。ノードによって応答時間が違う可能性があるので、
+    複数のノードで測る。
+    """
+    import asyncio
+
+    from whill_cli.latency import measure, summarize
+    from whill_cli.tap import TapError
+
+    token = os.environ.get('WHILL_GATEWAY_TOKEN', '')
+    if not token:
+        console.print('[red]WHILL_GATEWAY_TOKEN が未設定[/red]')
+        raise typer.Exit(2)
+
+    # ノードを分けて測る。costmap は実ノード名が違う（/local_costmap/local_costmap）
+    targets: list[tuple[str, object]] = [
+        ('controller_server.FollowPath.min_lookahead_dist', 0.6),
+        ('local_costmap.inflation_layer.inflation_radius', 0.6),
+        ('global_costmap.inflation_layer.cost_scaling_factor', 4.0),
+    ]
+
+    try:
+        samples = asyncio.run(
+            measure(f'ws://{host}:{port}', token, targets, repeats=repeats))
+    except TapError as exc:
+        console.print(f'[red]{exc}[/red]')
+        raise typer.Exit(1) from None
+
+    rejected = [s for s in samples if not s.accepted]
+    for sample in rejected[:3]:
+        console.print(f'[yellow]拒否された: {sample.key} — {sample.reason}[/yellow]')
+
+    table = Table(title=f'スライダー → Nav2 反映（各 {repeats} 回、単位 ms）')
+    table.add_column('key')
+    table.add_column('n', justify='right')
+    table.add_column('total 中央', justify='right')
+    table.add_column('total 最大', justify='right')
+    table.add_column('network', justify='right')
+    table.add_column('validate', justify='right')
+    table.add_column('service', justify='right')
+
+    worst = 0.0
+    for key, stats in summarize(samples).items():
+        worst = max(worst, stats['total_max'])
+        over = stats['total_max'] > budget
+        colour = 'red' if over else 'green'
+        table.add_row(
+            key.split('.', 1)[-1][:34],
+            str(int(stats['n'])),
+            f'{stats["total_median"]:.1f}',
+            f'[{colour}]{stats["total_max"]:.1f}[/{colour}]',
+            f'{stats["network_median"]:.1f}',
+            f'{stats["validate_median"]:.2f}',
+            f'{stats["service_median"]:.1f}',
+        )
+    console.print(table)
+
+    if worst > budget:
+        console.print(f'[red]最大 {worst:.1f} ms が予算 {budget:.0f} ms を超えた[/red]')
+        raise typer.Exit(1)
+    console.print(f'[green]最大 {worst:.1f} ms（予算 {budget:.0f} ms 以内）[/green]')
+
+
 # ---- params ----------------------------------------------------------------
 
 

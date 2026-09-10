@@ -396,6 +396,45 @@ test.describe('console のスクリーンショット', () => {
     await expect(page.getByTestId('latency')).toContainText('—')
   })
 
+  test('スライダーを動かすと param_set が送られる', async ({ page }, testInfo) => {
+    // gateway 抜きでも「スライダー → 送信」の経路が生きていることは確かめられる。
+    // 未接続なら送信は失敗し、変更ログに理由が残る（黙って何も起きない、を防ぐ）。
+    await openWithToken(page)
+    await page.evaluate(() => {
+      ;(window as unknown as {
+        __whillIngest: (f: Record<string, unknown>) => void
+      }).__whillIngest({
+        type: 'params', presets: [], preset: null, unreachable: [], mismatches: [],
+        params: [{
+          key: 'controller_server.FollowPath.min_lookahead_dist',
+          node: 'controller_server', ros_node: '/controller_server',
+          name: 'FollowPath.min_lookahead_dist', type: 'double',
+          value: 0.6, default: 0.6, range: { min: 0.2, max: 1.5, step: 0.05 },
+          unit: 'm', live: true, safety_class: 'caution',
+          description: '左右振動の直接原因。0.6 は蛇行の波長を上回る下限。',
+        }],
+      })
+    })
+
+    const key = 'controller_server.FollowPath.min_lookahead_dist'
+    const input = page.getByTestId(`input-${key}`)
+    await input.fill('0.9')
+    await input.press('Enter')
+
+    // 未接続なので拒否され、理由が残る
+    const log = page.getByTestId('change-log')
+    await expect(log).toBeVisible()
+    await expect(log).toContainText('gateway に繋がっていない')
+
+    // 拒否されたら入力欄は実際の値に戻る
+    await expect(input).toHaveValue('0.6')
+
+    await page.screenshot({
+      path: `${SHOT_DIR}/${testInfo.project.name}-slider.png`,
+      fullPage: true,
+    })
+  })
+
   test('768px で ops 相当の幅が横スクロールしない', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 })
     await openWithToken(page)
