@@ -72,6 +72,34 @@ whill run --robot cr2-01 --mode mock --dry-run
 
 `services/` の外から `whill` を叩くなら `uv run --project ~/whill_platform/services whill ...`。
 
+## stackd（他PC から起動・停止する）
+
+実機PC に ssh せずにスタックを操作するための常駐サービス。
+
+```bash
+# 実機PC 側で常駐させる
+export WHILL_GATEWAY_TOKEN=$(openssl rand -hex 16)
+uv run --project ~/whill_platform/services whill-stackd
+
+# 操作側（同じトークンを export しておく）
+whill stack status
+whill stack start --mode mock --follow 25
+whill stack logs --limit 50 --follow 30
+whill stack restart --mode mock
+whill stack stop
+
+# 別PC から
+whill stack status --url ws://192.168.1.20:8770
+```
+
+停止はプロセスグループごと落とす（SIGINT → SIGTERM → SIGKILL）。**親が
+終了しただけでは「停止した」と返さない**。`ros2 launch` の子は SIGINT を
+取りこぼすことがあり、孤児が残ると次の起動と喧嘩するため。
+
+systemd ユニットは `services/whill_stackd/whill-stackd.service`。
+**`enable` は実機復帰後**（実機なしで enable すると「動いているつもり」になる）。
+トークンはユニット本体ではなく `/etc/whill/stackd.env`（600）に置くこと。
+
 ## 確認
 
 ```bash
@@ -177,6 +205,8 @@ skip の理由がログに出る（全部 skip されて緑、を見逃さない
 | UI の値と実際の Nav2 の値が違う | `params` フレームの `mismatches` を見る。`whill tap --stream params -v` で件数が出る。 |
 | 手動操作が車体に届かない | `ros2 topic info /cmd_vel_teleop` で Subscription count を見る。0 なら twist_mux が居ない。mock では bringup が起動する。 |
 | E-stop を解除しても走り出さない | 仕様どおり。E-stop は Nav2 の goal を取り消すので、再開には改めてゴールを与えること。 |
+| `whill stack` が「stackd に接続できない」と言う | stackd が起動していない。`uv run --project services whill-stackd`。 |
+| stackd で止めたのにノードが残る | `ros2 node list` で確認する。残るならプロセスグループが作れていない環境。`docs/open-questions.md` に追記して止まること。 |
 | gateway が `address already in use` で落ちる | 前回のプロセスが残っている。`ss -ltnp \| grep 8765` で PID を見て落とす。 |
 | `mode=real` / `mode=sim` で例外が出る | 未配線。仕様どおり（黙って起動しないより落とす）。`docs/open-questions.md` K5。 |
 

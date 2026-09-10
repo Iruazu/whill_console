@@ -1,0 +1,39 @@
+# whill_stackd の systemd ユニット（テンプレート）。
+#
+# **enable は実機復帰後。** 実機なしで enable すると「動いているつもり」に
+# なる（docs/requirements.md §3 の決定）。
+#
+# 導入:
+#   sudo cp whill-stackd.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   # トークンは systemd の環境ファイルに置く。ユニット本体に書かない
+#   # （ユニットは world-readable、環境ファイルは 600 にできる）。
+#   sudo install -m 600 /dev/null /etc/whill/stackd.env
+#   echo "WHILL_GATEWAY_TOKEN=$(openssl rand -hex 16)" | sudo tee /etc/whill/stackd.env
+#   sudo systemctl start whill-stackd     # enable はまだしない
+[Unit]
+Description=whill_platform stackd (whill run supervisor)
+# ネットワークが上がってから。LAN 限定で待ち受ける。
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=systemlab
+WorkingDirectory=/home/systemlab/whill_platform
+EnvironmentFile=/etc/whill/stackd.env
+Environment=WHILL_PLATFORM_ROOT=/home/systemlab/whill_platform
+Environment=WHILL_PLATFORM_CONFIG=/home/systemlab/whill_platform/config
+Environment=RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+ExecStart=/home/systemlab/.local/bin/uv run --project /home/systemlab/whill_platform/services whill-stackd
+Restart=on-failure
+RestartSec=5
+
+# stackd 自身が落ちたら子（whill run）も道連れにする。孤児を残すと
+# 次の起動と喧嘩する（既存リポで実証済み）。
+KillMode=control-group
+# ROS ノードの終了処理（bag の flush 等）を待つ。
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
