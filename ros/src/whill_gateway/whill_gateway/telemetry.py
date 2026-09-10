@@ -109,8 +109,14 @@ class Telemetry:
 
     def __init__(self, node: Node, emit: Callable[[dict[str, Any]], None],
                  *, costmap_hz: float, pose_hz: float, scan_hz: float,
-                 image_hz: float) -> None:
+                 image_hz: float, max_cells: int = costmap_codec.DEFAULT_MAX_CELLS,
+                 wall_clock=None) -> None:
+        self.max_cells = max_cells
         self.node = node
+        # レート制限は**実時間**で測る。ブラウザへの帯域を守るためのものなので、
+        # sim 時計が止まったり倍速で進んだりするのに引きずられてはいけない。
+        # replay で sim 時計が進まず、最初の 1 通以降が全部止まった実績がある。
+        self._wall = wall_clock
         self.emit = emit
         self._seq = 0
         self._costmap_limit = {scope: RateLimiter(costmap_hz) for scope in COSTMAP_SCOPES}
@@ -121,6 +127,7 @@ class Telemetry:
         # 全量を受けた scope だけ部分更新を流す。全量を持たないクライアントに
         # 部分更新だけ送っても貼り込む先が無い。
         self._have_full: dict[str, int] = {}
+        self._decimation: dict[str, int] = {}
         # **最新の全量フレームを保持する。**
         # Nav2 は全量を latched で 1 回しか出さない（ADR-0002）。gateway が
         # 起動した瞬間に受け取ったきりなので、後から繋いだクライアントには
@@ -182,7 +189,8 @@ class Telemetry:
         self._image_limit.set_rate(image_hz)
 
     def _now(self) -> float:
-        return self.node.get_clock().now().nanoseconds / 1e9
+        clock = self._wall if self._wall is not None else self.node.get_clock()
+        return clock.now().nanoseconds / 1e9
 
     # ---- costmap -----------------------------------------------------------
 
@@ -202,13 +210,19 @@ class Telemetry:
             cells=list(msg.data),
             stamp=_stamp_seconds(msg.header),
             seq=self._seq,
+            max_cells=self.max_cells,
         )
+        self._decimation[scope] = frame['decimation']
         self._latest_full[scope] = frame
         self.emit(frame)
 
     def _on_costmap_update(self, scope: str, msg: OccupancyGridUpdate) -> None:
         # 全量をまだ配っていない scope の部分更新は捨てる。貼り込む先が無い。
         if scope not in self._have_full:
+            return
+        # 間引いて送った格子には、元の解像度の部分更新を貼れない。
+        # 貼ると座標がずれた絵になるので、送らない。次の全量で追いつく。
+        if self._decimation.get(scope, 1) > 1:
             return
         if not self._update_limit[scope].allow(self._now()):
             return

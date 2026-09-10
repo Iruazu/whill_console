@@ -170,12 +170,22 @@ class ParamBridge:
         await できないので、完了コールバックから asyncio の future へ
         `call_soon_threadsafe` で渡す。
         """
-        if not client.service_is_ready():
-            # discovery を少しだけ待つ。無ければ諦める（UI を固めない）。
-            if not client.wait_for_service(timeout_sec=1.0):
-                raise TimeoutError(f'{client.srv_name} が応答しない')
-
         loop = self._loop_getter()
+
+        if not client.service_is_ready():
+            # **`wait_for_service` は呼ばない。**
+            #
+            # これは同期呼び出しで、rclpy の別の wait set を使う。ノードを
+            # spin している executor スレッドと競合し、**購読コールバックごと
+            # 止まる**。replay モード（Nav2 が居ないので全ノードが未応答）で
+            # 実際に踏んだ: gateway が起動しているのに、接続後テレメトリが
+            # 1 通も流れなくなった。
+            #
+            # 待たずに諦めてよい。呼び出し側は「応答しない」を unreachable
+            # として UI に伝え、registry の値で代替する。次にクライアントが
+            # 繋いだときに再度試されるので、discovery が遅れただけなら
+            # そこで拾える。
+            raise TimeoutError(f'{client.srv_name} が応答しない')
         aio_future = loop.create_future()
 
         def _done(ros_future) -> None:

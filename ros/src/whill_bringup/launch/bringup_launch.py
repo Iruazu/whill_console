@@ -165,8 +165,11 @@ def _setup(context, *args, **kwargs):
         bag_path = Path(bag).expanduser()
         if not bag_path.exists():
             raise RuntimeError(f'bag が見つからない: {bag_path}')
+        # --loop は使わない。ループすると /clock が巻き戻り、costmap の seq
+        # 判定やテレメトリの「古さ」判定が壊れる。もう一度見たければ
+        # 起動し直す（ADR-0004）。
         actions.append(ExecuteProcess(
-            cmd=['ros2', 'bag', 'play', str(bag_path), '--clock', '--loop'],
+            cmd=['ros2', 'bag', 'play', str(bag_path), '--clock'],
             output='screen'))
     elif mode == 'real':
         # 実機ドライバの include は実機復帰後に配線する。ここで黙って
@@ -180,7 +183,10 @@ def _setup(context, *args, **kwargs):
             'sim/ の world 整備後に有効化する')
 
     # ---- TF ----------------------------------------------------------------
-    actions.extend(_static_tf_nodes(robot, use_sim_time))
+    # replay では出さない。bag に /tf_static が入っているので、こちらからも
+    # 出すと二重になる（ADR-0004）。
+    if mode != 'replay':
+        actions.extend(_static_tf_nodes(robot, use_sim_time))
 
     if mode == 'mock':
         # mock には localizer がいないので map -> odom を identity で固定する。
@@ -275,6 +281,8 @@ def generate_launch_description():
         DeclareLaunchArgument('autostart', default_value='true',
                               description='Nav2 の lifecycle を自動で activate する'),
         DeclareLaunchArgument('gateway', default_value='false',
-                              description='whill_gateway を同時に起動する'),
+                              description='whill_gateway を同時に起動する。'
+                                          'mode=replay では実質必須（bag を'
+                                          '見るための唯一の口）'),
         OpaqueFunction(function=_setup),
     ])

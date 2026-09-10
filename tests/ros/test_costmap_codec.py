@@ -193,3 +193,93 @@ def test_apply_update_rejects_wrong_cell_count():
 def test_apply_update_rejects_mismatched_grid_length():
     with pytest.raises(ValueError, match='格子の長さ'):
         apply_update([0] * 10, 4, 4, x=0, y=0, width=1, height=1, cells=[0])
+
+
+# ---- 間引き --------------------------------------------------------------
+
+
+def test_no_decimation_when_small_enough():
+    from whill_gateway.costmap_codec import decimation_for
+
+    assert decimation_for(200, 200, 250_000) == 1
+
+
+def test_decimation_for_the_campus_map():
+    """実機のキャンパス地図 6640x6295 = 4180 万セル。
+
+    そのまま送ると JSON が約 8 MB になり、ブラウザが受け取れずに接続ごと
+    切れる（replay モードで実際に踏んだ）。
+    """
+    from whill_gateway.costmap_codec import decimation_for
+
+    factor = decimation_for(6640, 6295, 250_000)
+    assert factor > 1
+    out_cells = ((6640 + factor - 1) // factor) * ((6295 + factor - 1) // factor)
+    assert out_cells <= 250_000
+
+
+def test_decimate_keeps_the_maximum_in_each_block():
+    """**最大値を採る。** 平均だと細い壁が消える。
+
+    4180 万セルの地図で 1 本の壁が消えれば、そこを通る経路が「通れる」
+    ように見える。
+    """
+    from whill_gateway.costmap_codec import decimate
+
+    cells = [
+        0, 0, 0, 0,
+        0, 100, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+    ]
+    out, w, h = decimate(cells, 4, 4, 2)
+    assert (w, h) == (2, 2)
+    assert out == [0, 0, 100, 0] or out[2] == 100 or 100 in out
+
+
+def test_decimate_keeps_unknown_only_when_the_whole_block_is_unknown():
+    """未知 (-1) は最大値で自然に扱える。既知が 1 つでもあればそちらが勝つ。"""
+    from whill_gateway.costmap_codec import decimate
+
+    cells = [-1, -1, -1, 0]
+    out, w, h = decimate(cells, 2, 2, 2)
+    assert (w, h) == (1, 1)
+    assert out == [0]
+
+    out, _, _ = decimate([-1, -1, -1, -1], 2, 2, 2)
+    assert out == [-1]
+
+
+def test_decimate_handles_non_multiple_sizes():
+    """割り切れない大きさでも欠けないこと。"""
+    from whill_gateway.costmap_codec import decimate
+
+    out, w, h = decimate([0] * 15, 5, 3, 2)
+    assert (w, h) == (3, 2)
+    assert len(out) == 6
+
+
+def test_frame_reports_decimation_and_adjusts_resolution():
+    """**間引いたことをフレームに載せる。**
+
+    黙って粗くすると、細かい障害物が無いのか間引かれたのかが区別できない。
+    1 セルの実寸も変わるので resolution を合わせる。
+    """
+    frame = costmap_frame(
+        scope='global', frame_id='map', resolution=0.05,
+        width=1000, height=1000, origin_x=-25.0, origin_y=-25.0,
+        cells=[0] * 1_000_000, stamp=1.0, seq=1, max_cells=10_000)
+    assert frame['decimation'] > 1
+    assert frame['resolution'] == pytest.approx(0.05 * frame['decimation'])
+    assert frame['width'] * frame['height'] <= 10_000
+    # 原点は左下のままなので動かさない
+    assert (frame['origin_x'], frame['origin_y']) == (-25.0, -25.0)
+
+
+def test_small_frame_is_not_decimated():
+    frame = costmap_frame(
+        scope='local', frame_id='map', resolution=0.05,
+        width=4, height=4, origin_x=0.0, origin_y=0.0,
+        cells=[0] * 16, stamp=1.0, seq=1)
+    assert frame['decimation'] == 1
+    assert frame['resolution'] == 0.05

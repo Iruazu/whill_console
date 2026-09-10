@@ -260,6 +260,10 @@ gateway が落ちても自動で繋ぎ直す（指数バックオフ、上限 10
 CI も同じものを撮って artifact `screenshots` に上げるので、そこから拾ってもよい。
 
 `scripts/test.sh` は CI (`.github/workflows/ci.yml`) と同じ内容を走らせる。
+
+**pnpm の版は `web/package.json` の `packageManager` で固定してある。**
+外すと CI が最新版を拾い、ローカルで再現できない失敗が出る（実際に踏んだ:
+新しい供給網ポリシーが「24 時間以内に公開された依存」を弾いた）。
 ローカルで緑なのに CI で赤い、という状態を作らないため、片方に検査を足したら
 もう片方にも足すこと。
 
@@ -303,6 +307,8 @@ skip の理由がログに出る（全部 skip されて緑、を見逃さない
 | 画面は出るが何も届かない | 上部帯の接続状態を見る。`disconnected` なら gateway が落ちている、`error` なら理由が出ている。 |
 | 仮想障害物を置いても経路が変わらない | `global_costmap.virtual_obstacles_enabled` が true か確認する。層の追加は再起動が要る（live: false）。起動ログに `Using plugin "whill_virtual_obstacles"` が出ているかも見る。 |
 | 消したのに障害物が残る | Nav2 のリカバリでは消えない設計（人が置いたものを勝手に消さない）。空配列を publish すること。 |
+| replay で gateway は動いているのにテレメトリが 1 通も届かない | costmap が大きすぎてブラウザの受信上限を超えている可能性。`whill tap -v` で `1/N に間引き` が出るか見る。`costmap_max_cells` を下げる。 |
+| 俯瞰図の地図が粗い | 大きい地図は間引いて送っている。倍率は俯瞰図の右上に出る。細かいところは local costmap で見る（間引かれない）。 |
 | gateway が `address already in use` で落ちる | 前回のプロセスが残っている。`ss -ltnp \| grep 8765` で PID を見て落とす。 |
 | `mode=real` / `mode=sim` で例外が出る | 未配線。仕様どおり（黙って起動しないより落とす）。`docs/open-questions.md` K5。 |
 

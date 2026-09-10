@@ -29,6 +29,7 @@ import threading
 from typing import Any
 
 import rclpy
+from rclpy.clock import Clock, ClockType
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import (
@@ -69,6 +70,19 @@ class Gateway(Node):
         self.robot_id = self.get_parameter('robot_id').value
         self.mode = self.get_parameter('mode').value
 
+        # **実時間の時計。sim 時計に依存させない。**
+        #
+        # gateway は SingleThreadedExecutor を別スレッドで回している。この構成
+        # では `use_sim_time: true` でもノードの時計が 0 のまま進まないことを
+        # 実測した（replay モードでテレメトリが 1 通も流れなくなった）。
+        #
+        # それ以前に、gateway の内部タイミングは実時間で測るべきもの:
+        #   - レート制限は「ブラウザへの帯域」を守るためのもの
+        #   - ハートビート監視は安全に関わる。sim 時計が止まったら止まる、
+        #     では話にならない（設計原則 4）
+        # メッセージの stamp は header から取るので、bag の時刻は失われない。
+        self._wall = Clock(clock_type=ClockType.SYSTEM_TIME)
+
         self.registry = reg.load(self.robot_id)
         declared = declare_from_registry(self, self.registry, node_name='whill_gateway')
         self.get_logger().info(f'registry から {len(declared)} 個のパラメータを宣言した')
@@ -84,11 +98,12 @@ class Gateway(Node):
         self.nav_active = False
 
         self.telemetry = Telemetry(
-            self, self.emit,
+            self, self.emit, wall_clock=self._wall,
             costmap_hz=float(self.get_parameter('costmap_publish_rate').value),
             pose_hz=float(self.get_parameter('pose_publish_rate').value),
             scan_hz=float(self.get_parameter('scan_publish_rate').value),
             image_hz=float(self.get_parameter('image_publish_rate').value),
+            max_cells=int(self.get_parameter('costmap_max_cells').value),
         )
         # live パラメータなので、走行中に変えられる。set のたびに反映する。
         self.add_on_set_parameters_callback(self._on_parameters_set)
@@ -120,7 +135,7 @@ class Gateway(Node):
         # 詰まったときに一緒に止まる。Wi-Fi が切れて WebSocket が黙るのは、
         # まさにゼロを出さなければならない状況（設計原則 4）。
         manual_period = 1.0 / float(self.get_parameter('manual_publish_rate').value)
-        self.create_timer(manual_period, self._tick_manual)
+        self.create_timer(manual_period, self._tick_manual, clock=self._wall)
 
         # ---- 仮想障害物 ----------------------------------------------------
         # costmap 層は全量置換で受け取るので、gateway が現在の一覧を保持し、
@@ -138,8 +153,16 @@ class Gateway(Node):
         # 誰も置いていない障害物が costmap に載ったままになる。
         self._publish_obstacles()
 
-        self.create_timer(STATUS_PERIOD_SEC, self._publish_status)
-        self.create_timer(TF_SUMMARY_PERIOD_SEC, self.telemetry.publish_tf_summary)
+        # **status はシステム時計で回す。**
+        # use_sim_time: true のノードでは、ROS のタイマーは /clock が進んだ
+        # ときにしか発火しない。bag の再生が終わると /clock が止まり、
+        # status も止まって UI からは「gateway が落ちた」ように見える。
+        # 再生が終わったことは分かるべきで、画面が固まって分からなくなるのは困る。
+        # テレメトリのレート制限は sim 時計のままでよい（bag が進まなければ
+        # 新しいデータも来ない）。
+        self.create_timer(STATUS_PERIOD_SEC, self._publish_status, clock=self._wall)
+        self.create_timer(TF_SUMMARY_PERIOD_SEC, self.telemetry.publish_tf_summary,
+                          clock=self._wall)
 
     # ---- ROS → Web ---------------------------------------------------------
 
@@ -178,9 +201,13 @@ class Gateway(Node):
             )
         return SetParametersResult(successful=True)
 
+    def _now(self) -> float:
+        """実時間（秒）。安全とレート制限はこれで測る。"""
+        return self._wall.now().nanoseconds / 1e9
+
     def _tick_manual(self) -> None:
         """手動速度指令とゼロを出す。ROS タイマーから毎周期。"""
-        now = self.get_clock().now().nanoseconds / 1e9
+        now = self._now()
         command = self.manual.output(now)
 
         if command.reason != self._last_manual_reason:
@@ -239,8 +266,7 @@ class Gateway(Node):
         }
 
     def _on_cmd_vel(self, msg: Twist) -> None:
-        self.moving.observe(msg.linear.x, msg.angular.z,
-                            self.get_clock().now().nanoseconds / 1e9)
+        self.moving.observe(msg.linear.x, msg.angular.z, self._now())
 
     def _publish_status(self) -> None:
         server = self.server

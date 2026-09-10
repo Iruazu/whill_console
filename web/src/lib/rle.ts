@@ -55,6 +55,7 @@ export function costmapFromFrame(frame: CostmapFrame): CostmapState {
     originX: frame.originX,
     originY: frame.originY,
     cells: decodeRle(frame.rle, frame.width * frame.height),
+    decimation: frame.decimation ?? 1,
     seq: frame.seq,
     stamp: frame.stamp,
   }

@@ -65,7 +65,13 @@ jobs:
         with:
           node-version: 22
 
-      - name: pnpm を有効にする
+      # **バージョンを固定する。** package.json の packageManager を corepack が
+      # 読む。固定しないと CI が最新の pnpm を拾い、ローカル (9.12.3) と挙動が
+      # 変わる。実際に、新しい pnpm の供給網ポリシー
+      # (ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION) が「24 時間以内に公開された
+      # 依存」を弾いて CI だけ赤くなった。ローカルで再現できない赤は、
+      # そのうち誰も見なくなる。
+      - name: pnpm を有効にする（版は package.json で固定）
         run: corepack enable pnpm
 
       - name: 依存を入れる

@@ -42,6 +42,11 @@ export interface CostmapFrame {
   rle: number[]
   /** RLE 後の要素数 / セル数。1 を超えたら RLE が逆効果になっている。 */
   ratio: number
+  /** 何倍に間引かれたか。1 なら元のまま。
+   *
+   * 黙って粗くすると「細かい障害物が無いのか間引かれたのか」が区別できない。
+   * 画面に出すために持つ。 */
+  decimation: number
   stamp: number
   seq: number
 }
@@ -69,6 +74,7 @@ export interface CostmapState {
   originX: number
   originY: number
   cells: Int8Array
+  decimation: number
   seq: number
   stamp: number
 }

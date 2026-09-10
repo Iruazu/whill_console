@@ -100,7 +100,11 @@ modes:
     include_stack: true
     use_sim_time: false
   replay:
-    description: MCAP 再生 + 既存 Nav2 スタック
+    description: >-
+      MCAP 再生。**Nav2 は起動しない。** 再生は「観測の再現」であって
+      「再走行」ではない（ADR-0004）。bag が /tf・/plan・costmap を持っており、
+      Nav2 を同時に上げると二重になって、画面に出ているのが当時の判断なのか
+      いまの判断なのか区別が付かなくなる。
     drivers: []
-    include_stack: true
+    include_stack: false
     use_sim_time: true

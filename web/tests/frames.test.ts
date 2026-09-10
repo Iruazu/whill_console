@@ -30,6 +30,7 @@ const fullCostmap = (seq = 1, scope = 'local') => ({
   origin_y: -2,
   rle: [0, 16],
   ratio: 0.125,
+  decimation: 1,
   stamp: 12.5,
   seq,
 })

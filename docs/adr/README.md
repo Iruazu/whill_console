@@ -8,3 +8,4 @@
 | [0001](0001-config-single-source.md) | 設定の単一ソースを config/ の yaml に置く | 採択 |
 | [0002](0002-costmap-transport.md) | costmap の転送形式は RLE JSON で開始する | 採択（暫定） |
 | [0003](0003-websocket-library.md) | WebSocket は aiohttp で実装する | 採択 |
+| [0004](0004-replay-is-observation-only.md) | 再生は「観測の再現」であって「再走行」ではない | 採択 |

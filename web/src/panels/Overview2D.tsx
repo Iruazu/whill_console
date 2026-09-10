@@ -229,6 +229,9 @@ export function Overview2D({ send }: Overview2DProps) {
         <span className="scale-hint">
           {view.pixelsPerMeter.toFixed(0)} px/m
           {costmap ? ` · ${costmap.width}×${costmap.height}` : ''}
+          {costmap && costmap.decimation > 1
+            ? ` · 1/${costmap.decimation} に間引き`
+            : ''}
         </span>
       </div>
 
