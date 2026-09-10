@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 
 import { useGateway } from './hooks/useGateway'
+import { useStackd } from './hooks/useStackd'
 import { useStoreProbe } from './hooks/useStoreProbe'
 import { loadToken } from './lib/token'
 import { Overview2D } from './panels/Overview2D'
@@ -17,6 +18,7 @@ export function App() {
   const [token, setToken] = useState(loadToken)
   const client = useGateway(token)
   useStoreProbe()
+  const stackd = useStackd(token)
 
   // 未接続のときは false を返す。押した感触だけあって何も起きない、を避ける。
   const send = useCallback(
@@ -30,7 +32,7 @@ export function App() {
 
   return (
     <div className="app">
-      <TopBar />
+      <TopBar send={send} stackd={stackd} />
       <div className="layout">
         <Overview2D />
         <ParamsPanel send={send} />
