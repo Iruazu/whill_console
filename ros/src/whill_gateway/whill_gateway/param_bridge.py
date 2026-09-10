@@ -21,6 +21,7 @@ ROS のノード名（`/local_costmap/local_costmap`）が違う。Phase 1 で�
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
@@ -258,7 +259,19 @@ class ParamBridge:
 
         検査に落ちた場合も例外にせず、拒否として記録して返す。UI は
         「なぜ拒否されたか」を出せる必要がある。
+
+        ## 所要時間の計測
+
+        結果に `timing` を載せる。**1 つの数字にしない。**「200 ms を超えた」
+        だけ分かっても、ネットワークが遅いのか gateway の検査が重いのか
+        Nav2 が返さないのか区別できず、どこを直せばよいか分からない。
+
+        gateway 内の時刻は `time.monotonic()` で測る。差分しか使わないので
+        ブラウザとの時計合わせは要らない。
         """
+        started = time.monotonic()
+        timing: dict[str, float] = {}
+
         try:
             spec = self.registry.spec(key)
         except RegistryError as exc:
@@ -271,10 +284,11 @@ class ParamBridge:
         try:
             self.registry.set_value(key, value, moving=moving)
         except RegistryError as exc:
+            timing['validate_ms'] = (time.monotonic() - started) * 1000.0
             self._log_change(spec, old, value, source, False, str(exc))
             return {'type': protocol.MSG_PARAM_CHANGED, 'key': key,
                     'accepted': False, 'reason': str(exc), 'value': old,
-                    'source': source}
+                    'source': source, 'timing': timing}
 
         if not spec.live:
             # 再起動が要るものは ROS へ送らない。送っても効かないのに
@@ -282,9 +296,15 @@ class ParamBridge:
             self._log_change(spec, old, value, source, False,
                              '再起動が必要（live: false）')
             self.registry.values[key] = old
+            timing['validate_ms'] = (time.monotonic() - started) * 1000.0
             return {'type': protocol.MSG_PARAM_CHANGED, 'key': key,
                     'accepted': False, 'value': old, 'source': source,
+                    'timing': timing,
                     'reason': 'このパラメータは再起動が必要（live: false）'}
+
+        # registry の検査がここまで。以降は ROS のサービス呼び出し。
+        timing['validate_ms'] = (time.monotonic() - started) * 1000.0
+        service_started = time.monotonic()
 
         ros_node = self.registry.ros_node(spec.node)
         try:
@@ -295,13 +315,15 @@ class ParamBridge:
             request.parameters = [parameter]
             response = await self._call(self._client(ros_node, 'set'), request)
         except Exception as exc:  # noqa: BLE001
+            timing['service_ms'] = (time.monotonic() - service_started) * 1000.0
             self.registry.values[key] = old
             reason = f'{ros_node} へ届かない: {exc}'
             self._log_change(spec, old, value, source, False, reason)
             return {'type': protocol.MSG_PARAM_CHANGED, 'key': key,
                     'accepted': False, 'reason': reason, 'value': old,
-                    'source': source}
+                    'source': source, 'timing': timing}
 
+        timing['service_ms'] = (time.monotonic() - service_started) * 1000.0
         result = response.results[0] if response.results else None
         if result is None or not result.successful:
             self.registry.values[key] = old
@@ -310,12 +332,13 @@ class ParamBridge:
             self._log_change(spec, old, value, source, False, reason)
             return {'type': protocol.MSG_PARAM_CHANGED, 'key': key,
                     'accepted': False, 'reason': reason, 'value': old,
-                    'source': source}
+                    'source': source, 'timing': timing}
 
         self._log_change(spec, old, value, source, True, '')
+        timing['gateway_ms'] = (time.monotonic() - started) * 1000.0
         return {'type': protocol.MSG_PARAM_CHANGED, 'key': key,
                 'accepted': True, 'value': value, 'ros_node': ros_node,
-                'source': source}
+                'source': source, 'timing': timing}
 
     async def apply_preset(self, name: str, *, source: str) -> list[dict[str, Any]]:
         """preset の overrides をまとめて適用する。

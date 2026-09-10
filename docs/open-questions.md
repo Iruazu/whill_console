@@ -22,7 +22,7 @@
 | 2 | 実機PC の CPU 負荷（gateway の OccupancyGrid → RLE 変換コスト）。`whill_gateway.costmap_publish_rate` の既定 2.0 Hz が妥当かはここで決まる。 |
 | 2 | Wi-Fi 越しの実測遅延。`manual_heartbeat_timeout` 0.5 s が厳しすぎないか。**厳しすぎても安易に伸ばさない**（設計原則 4）。localhost では往復 1 ms 未満（初回のみ 42 ms）。 |
 | 3 | 走行中のスライダー変更が Nav2 で安全に反映されるか。`locked_while_moving` の運用確認。 |
-| 3 | スライダー操作 → Nav2 反映 200 ms 以内の実測（mock では達成できても、実機の負荷下で崩れる可能性）。 |
+| 3 | **スライダー操作 → Nav2 反映 200 ms 以内の実機での再測定。** mock / localhost では最大 12.0 ms（予算の 6 %）だが、実機では Wi-Fi 越しの往復が支配項になり、CPU 負荷で ROS のサービス応答も伸びうる。計測値: `docs/measurements/2026-09-10-param-latency.md` |
 | 2 | **E-stop 解除後の復帰手順。** gateway は E-stop 時に Nav2 の goal を取り消すので、解除しても自律走行は再開しない（再開には明示的な指令が要る）。実機でこの運用が妥当かは要確認。 |
 | 2 | **`manual_zero_hold` 2.0 s が実機の twist_mux タイムアウト 0.5 s に対して適切か。** 短いと Nav2 の指令が一瞬通り抜ける隙ができる。 |
 | 4 | 実機走行中の仮想障害物による回避（幽霊障害物テスト）。 |

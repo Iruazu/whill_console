@@ -262,6 +262,10 @@ class Gateway(Node):
                 raise protocol.ProtocolError('param_set: value が無い')
             result = await self.params.set_value(
                 key, message['value'], source='slider')
+            # クライアントの時計で測った往復を出せるよう、送信時刻を返す。
+            # gateway 側では中身を見ない（時計合わせをしない）。
+            if 'sent_at' in message:
+                result['sent_at'] = message['sent_at']
             # **受理も拒否も全クライアントへ配る。** 1 人が変えた値が別の画面で
             # 古いままにならないようにするのと、「誰かが走行中に速度を上げよう
             # として拒否された」ことが全員に見えるようにするため。

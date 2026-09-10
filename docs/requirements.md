@@ -110,14 +110,28 @@ Phase 2 で分かったこと:
   `/cmd_vel` を誰も消費しておらず、goal は accept されるので気づきにくかった
 - 停止は親の終了だけで判断しない。プロセスグループが空になるまで段階を上げる
 
-### Phase 3 — Web dev レイアウト
+### Phase 3 — Web dev レイアウト ✅ 完了（2026-09-10）
 
 パネル: 上部帯 / overview2d / params。初期値は dev = 追従 OFF・map 固定。
 Canvas 描画、TypeScript、状態は zustand。
 
-**受け入れ**: mock 構成で costmap が描画され、スライダー操作から Nav2 の `max_vel_x` が
+Phase 3 で分かったこと:
+
+- **遅延は往復で測る。** `status` の `stamp` との差では測れない — ROS の時刻と
+  ブラウザの時計は同期しておらず、replay では ROS 側が実時刻ですらない
+- 座標変換は 1 か所に閉じる。散らすと「path だけ 1 セルずれる」という
+  原因を追いにくいバグになる
+- **拒否されたとき、入力欄を実際の値に戻す。** 値が変わらないので素朴に
+  実装すると拒否された値が残り、「効いたように見えて効いていない」表示になる
+
+**受け入れ**: mock 構成で costmap が描画され、スライダー操作から Nav2 の値が
 変わるまで 200 ms 以内（gateway のタイムスタンプで計測）。Playwright スクリーンショットが
-`docs/screenshots/` に自動保存される（**保存経路は Phase 0 で動作済み**）。
+`docs/screenshots/` に自動保存される。→ **達成**
+
+実測（mock / localhost、2026-09-10）は中央値 1.0〜1.2 ms、最大 12.0 ms で予算の 6 %。
+内訳は network 0.3 / validate 0.01 / service 0.7 ms。
+詳細と読み方の注意は `docs/measurements/2026-09-10-param-latency.md`。
+**実機では Wi-Fi 越しの往復が支配項になるので、この数字は実機の代わりにならない。**
 
 ### Phase 4 — 仮想障害物と再生
 
