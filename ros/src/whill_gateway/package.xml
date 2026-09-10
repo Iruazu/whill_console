@@ -18,6 +18,9 @@
   <exec_depend>tf2_msgs</exec_depend>
   <exec_depend>action_msgs</exec_depend>
   <exec_depend>rcl_interfaces</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <!-- 配車の取り消し (/dispatch/cancel)。 -->
+  <exec_depend>std_srvs</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <!-- replay モードで再生位置を出すため。/clock と player の pause/resume/set_rate。 -->
   <exec_depend>rosgraph_msgs</exec_depend>

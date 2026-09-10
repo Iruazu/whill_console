@@ -156,6 +156,41 @@ export interface TelemetryFrame {
   stamp: number
 }
 
+/** 配車の進み方。`whill_dispatch` の phase をそのまま使う。 */
+export type DispatchPhase =
+  | 'IDLE' | 'QUEUED' | 'ACTIVE' | 'SUCCEEDED' | 'ABORTED' | 'CANCELED'
+
+/** 選べる配車地点。 */
+export interface Waypoint {
+  name: string
+  label: string
+  x: number | null
+  y: number | null
+  yaw: number | null
+}
+
+/** 配車の現在状態。**`whill_dispatch` が居ないモード（replay）では届かない。**
+ *
+ * `pose` / `battery` / `teleop_active` は**意図的に含まない。**
+ * 前 2 つは gateway が別の口で配っており、2 経路で配ると食い違ったときに
+ * どちらが正しいか分からない。teleop は gateway の手動操作に一本化した
+ * （設計原則 4）。
+ */
+export interface DispatchState {
+  jobId: number | null
+  phase: DispatchPhase | null
+  /** 走行中の目的地名。走っていなければ null。 */
+  waypoint: string | null
+  /** 0..1。**null は「0 %」ではなく「まだ走っていない」。** */
+  progress: number | null
+  /** 待っている job の数。走行中のものは含まない。 */
+  queueLen: number | null
+  /** scan-to-map localizer が合っているか。配車してよいかの判断材料。 */
+  aligned: boolean | null
+  /** localization の fitness（小さいほど良い）。 */
+  fitness: number | null
+}
+
 /** bag 再生の位置と速度。**replay モードでのみ届く。**
  *
  * `null` が「不明」を意味する。`total` が null なら metadata.yaml を読めて

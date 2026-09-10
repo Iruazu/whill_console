@@ -135,6 +135,73 @@ body {
 .panel.overview { flex: 2; display: flex; flex-direction: column; }
 .panel.params { flex: 1; min-width: 320px; }
 
+/* ---- 配車 ------------------------------------------------------------- */
+
+/* 右カラム。配車を上、パラメータを下に積む。配車は行き先ボタンだけなので
+   高さが要らず、長いパラメータ一覧に押し出されないよう flex を切る。 */
+.side { display: flex; flex-direction: column; flex: 1; min-width: 320px; min-height: 0; }
+.side .panel.params { margin-top: 0; }
+
+.panel.dispatch { flex: none; overflow: visible; }
+.panel.dispatch header { display: flex; align-items: center; gap: 8px; }
+.panel.dispatch h2 { margin: 0; flex: none; }
+
+.badge.phase-active { color: var(--accent); border-color: var(--accent); }
+.badge.phase-queued { color: var(--warn); border-color: var(--warn); }
+.badge.phase-succeeded { color: var(--ok); border-color: var(--ok); }
+.badge.phase-aborted { color: var(--crit); border-color: var(--crit); }
+
+.dispatch-active { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.dispatch-target { font-weight: 600; }
+
+.progress-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+.progress-fill { display: block; height: 100%; background: var(--accent); }
+
+.dispatch-health { display: flex; gap: 8px; margin-top: 8px; }
+
+.dispatch-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.dispatch-targets button {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.dispatch-targets button:disabled {
+  color: var(--muted);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+
+.panel.dispatch > button.danger {
+  margin-top: 10px;
+  background: transparent;
+  color: var(--crit);
+  border: 1px solid var(--crit);
+  border-radius: 4px;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+.panel.dispatch > button.danger:disabled {
+  color: var(--muted);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+
+.muted { color: var(--muted); font-size: 12px; }
+
 .overview-controls {
   display: flex;
   align-items: center;
@@ -184,6 +251,7 @@ body {
 @media (max-width: 768px) {
   .layout { flex-direction: column; }
   .panel.params { min-width: 0; }
+  .side { min-width: 0; }
 }
 
 .token-gate {

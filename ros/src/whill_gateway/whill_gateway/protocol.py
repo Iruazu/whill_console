@@ -11,10 +11,12 @@ Web 側の対の実装は `web/src/lib/types.ts`。片方だけ変えないこ�
 ## 方向
 
   client → server : auth, subscribe, param_set, preset_apply, manual_vel,
-                    heartbeat, estop, virtual_obstacles, replay_control
+                    heartbeat, estop, virtual_obstacles, replay_control,
+                    dispatch_submit, dispatch_cancel
   server → client : hello, status, error, params, param_changed,
                     costmap, costmap_update, pose, path, tf, diagnostics,
-                    image, replay, telemetry
+                    image, replay, telemetry, dispatch_state,
+                    dispatch_waypoints
 
 ## 認証
 
@@ -44,11 +46,20 @@ MSG_VIRTUAL_OBSTACLES = 'virtual_obstacles'
 MSG_PING = 'ping'
 MSG_REPLAY_CONTROL = 'replay_control'
 """bag 再生の一時停止・再開・速度変更。**シークは含まない**（ADR-0004）。"""
+MSG_DISPATCH_SUBMIT = 'dispatch_submit'
+MSG_DISPATCH_CANCEL = 'dispatch_cancel'
+"""配車の投入と取り消し。既存 `whill_dispatch` の `/dispatch/*` へ橋渡しする。
+
+**手動操作（`/dispatch/teleop`）は橋渡ししない。** gateway の `manual_vel` +
+ハートビートと役割が同じで、両方生かすと `/cmd_vel_teleop` に 2 経路から
+書き込むことになり、どちらが止めているのか分からなくなる（設計原則 4）。
+"""
 
 CLIENT_MESSAGES = frozenset({
     MSG_AUTH, MSG_SUBSCRIBE, MSG_PARAM_SET, MSG_PRESET_APPLY,
     MSG_MANUAL_VEL, MSG_HEARTBEAT, MSG_ESTOP, MSG_VIRTUAL_OBSTACLES,
     MSG_PING, MSG_REPLAY_CONTROL,
+    MSG_DISPATCH_SUBMIT, MSG_DISPATCH_CANCEL,
 })
 
 REPLAY_ACTIONS = frozenset({'pause', 'resume', 'set_rate'})
@@ -95,6 +106,13 @@ MSG_TELEMETRY = 'telemetry'
 閾値の判定は gateway 側で済ませて `level` だけ渡す。判定を UI に置くと、
 `whill doctor` や CLI から見たときに画面と違う答えが出る。
 """
+MSG_DISPATCH_STATE = 'dispatch_state'
+MSG_DISPATCH_WAYPOINTS = 'dispatch_waypoints'
+"""配車の現在状態と、選べる地点の一覧。
+
+`whill_dispatch` が居ないモード（replay）では流れない。空を流さないのは、
+「配車していない」と「待機中」を UI が区別できなくなるため。
+"""
 MSG_REPLAY = 'replay'
 """bag 再生の位置と速度。replay モードでのみ流れる。
 
@@ -107,6 +125,7 @@ SERVER_MESSAGES = frozenset({
     MSG_COSTMAP, MSG_COSTMAP_UPDATE, MSG_POSE, MSG_PATH, MSG_SCAN,
     MSG_TF, MSG_DIAGNOSTICS, MSG_IMAGE, MSG_PONG, MSG_OBSTACLES,
     MSG_REPLAY, MSG_TELEMETRY,
+    MSG_DISPATCH_STATE, MSG_DISPATCH_WAYPOINTS,
 })
 """server → client のフレーム一覧。
 
@@ -122,7 +141,7 @@ PRE_AUTH_MESSAGES = frozenset({MSG_HELLO, MSG_ERROR})
 STREAMS = frozenset({
     MSG_STATUS, MSG_PARAMS, MSG_COSTMAP, MSG_POSE, MSG_PATH, MSG_SCAN,
     MSG_TF, MSG_DIAGNOSTICS, MSG_IMAGE, MSG_OBSTACLES, MSG_REPLAY,
-    MSG_TELEMETRY,
+    MSG_TELEMETRY, MSG_DISPATCH_STATE,
 })
 
 # フレーム種別 → それが属するストリーム。
@@ -133,6 +152,9 @@ STREAMS = frozenset({
 # costmap_update が broadcast で捨てられていた。
 _STREAM_OF = {
     MSG_COSTMAP_UPDATE: MSG_COSTMAP,
+    # 地点一覧は配車パネルに出るもの。独立させると「一覧は来るのに状態が
+    # 来ない」構成を作れてしまい、進捗が止まった配車パネルができる。
+    MSG_DISPATCH_WAYPOINTS: MSG_DISPATCH_STATE,
     # 変更ログは params パネルに出るもの。params を購読していれば届く。
     # 独立させると「スライダーは出るのに変更履歴が来ない」構成を作れてしまう。
     MSG_PARAM_CHANGED: MSG_PARAMS,
@@ -153,6 +175,7 @@ DEFAULT_STREAMS = frozenset({
     MSG_REPLAY,
     # バッテリーと localization の健全性は、繋いだら必ず見えるべきもの。
     MSG_TELEMETRY,
+    MSG_DISPATCH_STATE,
 })
 """何も指定せずに繋いだときに流れるもの。画像と tf は明示的に要求させる。"""
 

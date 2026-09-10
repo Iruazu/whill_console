@@ -492,3 +492,57 @@ describe('ドライバのテレメトリ', () => {
     expect(apply(emptyFrameState(), frame(), 777).receivedAt.telemetry).toBe(777)
   })
 })
+
+describe('配車', () => {
+  it('dispatch_node が居ないモードでは null のまま', () => {
+    // 空のパネルを出すと「配車できない」と「配車していない」が区別できない
+    expect(emptyFrameState().dispatch).toBeNull()
+    expect(emptyFrameState().waypoints).toEqual([])
+  })
+
+  it('状態を camelCase で取り込む', () => {
+    const state = apply(emptyFrameState(), {
+      type: 'dispatch_state',
+      job_id: 3, phase: 'ACTIVE', waypoint: 'east', progress: 0.42,
+      queue_len: 1, aligned: true, fitness: 0.31,
+    })
+    expect(state.dispatch).toEqual({
+      jobId: 3, phase: 'ACTIVE', waypoint: 'east', progress: 0.42,
+      queueLen: 1, aligned: true, fitness: 0.31,
+    })
+  })
+
+  it('走っていないことを進捗 0 % にしない', () => {
+    const state = apply(emptyFrameState(), {
+      type: 'dispatch_state', phase: 'IDLE', job_id: null, progress: null,
+      queue_len: 0, aligned: null, fitness: null, waypoint: null,
+    })
+    expect(state.dispatch?.progress).toBeNull()
+    expect(state.dispatch?.jobId).toBeNull()
+    expect(state.dispatch?.aligned).toBeNull()
+  })
+
+  it('地点一覧を取り込む', () => {
+    const state = apply(emptyFrameState(), {
+      type: 'dispatch_waypoints',
+      waypoints: [{ name: 'east', label: '東端', x: 7, y: 0, yaw: 0 }],
+    })
+    expect(state.waypoints).toEqual([
+      { name: 'east', label: '東端', x: 7, y: 0, yaw: 0 },
+    ])
+  })
+
+  it('label が無ければ name を使う', () => {
+    // 空文字のボタンを出さない
+    const state = apply(emptyFrameState(), {
+      type: 'dispatch_waypoints', waypoints: [{ name: 'east' }],
+    })
+    expect(state.waypoints[0].label).toBe('east')
+    expect(state.waypoints[0].x).toBeNull()
+  })
+
+  it('受信時刻を記録する', () => {
+    const state = apply(emptyFrameState(), { type: 'dispatch_state' }, 555)
+    expect(state.receivedAt.dispatch_state).toBe(555)
+  })
+})
