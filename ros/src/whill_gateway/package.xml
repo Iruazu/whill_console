@@ -14,6 +14,8 @@
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>diagnostic_msgs</exec_depend>
+  <exec_depend>map_msgs</exec_depend>
+  <exec_depend>tf2_msgs</exec_depend>
   <exec_depend>rcl_interfaces</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>python3-aiohttp</exec_depend>

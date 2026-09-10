@@ -1,3 +1,5 @@
+import type { CostmapFrame, CostmapState, CostmapUpdateFrame } from './types'
+
 /** costmap の RLE 展開。
  *
  * 転送形式は RLE JSON で開始する（負荷次第で PNG へ切り替える。ADR-0002）。
@@ -40,4 +42,61 @@ export function cellColor(value: number): [number, number, number, number] {
   const t = value / 100
   const g = Math.round(90 + 100 * (1 - t))
   return [Math.round(60 + 120 * t), g, 110, 255]
+}
+
+/** 全量フレームから、手元で保持する格子を作る。 */
+export function costmapFromFrame(frame: CostmapFrame): CostmapState {
+  return {
+    scope: frame.scope,
+    frameId: frame.frameId,
+    resolution: frame.resolution,
+    width: frame.width,
+    height: frame.height,
+    originX: frame.originX,
+    originY: frame.originY,
+    cells: decodeRle(frame.rle, frame.width * frame.height),
+    seq: frame.seq,
+    stamp: frame.stamp,
+  }
+}
+
+/** 部分更新を貼り込む。
+ *
+ * gateway 側の `costmap_codec.apply_update` と対の実装。片方だけ変えないこと。
+ *
+ * 手元の全量より古い更新は捨てる。フレームの順序が入れ替わったときに、
+ * 前の格子の断片を新しい格子へ貼って壊れた絵にしないため。
+ * 範囲外の更新は例外にする（黙って切り詰めると、ずれた地図で描画が続き
+ * 原因を追えない）。
+ */
+export function applyCostmapUpdate(
+  state: CostmapState,
+  update: CostmapUpdateFrame,
+): CostmapState {
+  if (update.scope !== state.scope) {
+    throw new Error(`scope が違う: ${update.scope} != ${state.scope}`)
+  }
+  if (update.seq !== state.seq) {
+    // 古い更新。捨てるのが正しく、貼ると壊れる。
+    return state
+  }
+  if (
+    update.x < 0 ||
+    update.y < 0 ||
+    update.x + update.width > state.width ||
+    update.y + update.height > state.height
+  ) {
+    throw new Error(
+      `更新矩形 (${update.x},${update.y},${update.width},${update.height}) が ` +
+        `格子 ${state.width}x${state.height} の外にはみ出している`,
+    )
+  }
+
+  const patch = decodeRle(update.rle, update.width * update.height)
+  const cells = new Int8Array(state.cells)
+  for (let row = 0; row < update.height; row += 1) {
+    const start = (update.y + row) * state.width + update.x
+    cells.set(patch.subarray(row * update.width, (row + 1) * update.width), start)
+  }
+  return { ...state, cells, stamp: update.stamp }
 }

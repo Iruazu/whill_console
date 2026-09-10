@@ -34,11 +34,15 @@ from rclpy.node import Node
 
 from whill_gateway import protocol
 from whill_gateway.server import Client, GatewayServer
+from whill_gateway.telemetry import Telemetry
 from whill_params import registry as reg
 from whill_params.descriptors import declare_from_registry
 
 STATUS_PERIOD_SEC = 1.0
 """`status` フレームの配信周期。上部帯の更新なので 1 Hz で足りる。"""
+
+TF_SUMMARY_PERIOD_SEC = 2.0
+"""tf 要約の配信周期。中身が変わったときだけ実際に流れる。"""
 
 
 class Gateway(Node):
@@ -66,7 +70,17 @@ class Gateway(Node):
         self.estop = False
         self.nav_active = False
 
+        self.telemetry = Telemetry(
+            self, self.emit,
+            costmap_hz=float(self.get_parameter('costmap_publish_rate').value),
+            pose_hz=float(self.get_parameter('pose_publish_rate').value),
+            image_hz=float(self.get_parameter('image_publish_rate').value),
+        )
+        # live パラメータなので、走行中に変えられる。set のたびに反映する。
+        self.add_on_set_parameters_callback(self._on_parameters_set)
+
         self.create_timer(STATUS_PERIOD_SEC, self._publish_status)
+        self.create_timer(TF_SUMMARY_PERIOD_SEC, self.telemetry.publish_tf_summary)
 
     # ---- ROS → Web ---------------------------------------------------------
 
@@ -80,6 +94,28 @@ class Gateway(Node):
         if loop is None or server is None or loop.is_closed():
             return
         loop.call_soon_threadsafe(server.broadcast, message)
+
+    def _on_parameters_set(self, params):
+        """live なレート指定を Telemetry に伝える。
+
+        `SetParametersResult(successful=True)` を返さないと ros2 param set が
+        失敗する。値の妥当性は registry 側（ParameterDescriptor の範囲）が見る。
+        """
+        from rcl_interfaces.msg import SetParametersResult
+
+        names = ('costmap_publish_rate', 'pose_publish_rate', 'image_publish_rate')
+        incoming = {p.name: float(p.value) for p in params if p.name in names}
+        if incoming:
+            resolved = {
+                name: incoming.get(name, float(self.get_parameter(name).value))
+                for name in names
+            }
+            self.telemetry.set_rates(
+                costmap_hz=resolved['costmap_publish_rate'],
+                pose_hz=resolved['pose_publish_rate'],
+                image_hz=resolved['image_publish_rate'],
+            )
+        return SetParametersResult(successful=True)
 
     def _publish_status(self) -> None:
         server = self.server
@@ -108,9 +144,17 @@ class Gateway(Node):
         raise protocol.ProtocolError(f'{kind} はまだ実装していない')
 
     async def on_client_connect(self, client: Client) -> None:
-        """認証直後に現在の状態を 1 通投げる。次の周期を待たせない。"""
+        """認証直後に現在の状態をまとめて投げる。
+
+        次の配信周期を待たせないためだけではない。**costmap は保持している
+        ものを配らないと永久に届かない**（Nav2 は全量を latched で 1 回しか
+        出さない。ADR-0002）。
+        """
         server = self.server
         await asyncio.sleep(0)  # ハンドラを await 可能に保つ
+
+        self._send_snapshot(client)
+
         client.enqueue(protocol.safe_encode(protocol.status(
             robot_id=self.robot_id,
             mode=self.mode,
@@ -120,6 +164,21 @@ class Gateway(Node):
             stamp=self.get_clock().now().nanoseconds / 1e9,
             preset=self.registry.applied_preset,
         )))
+
+    def _send_snapshot(self, client: Client) -> None:
+        """いま保持している状態のうち、そのクライアントが購読中のものを配る。"""
+        for frame in self.telemetry.snapshot():
+            if client.wants(frame['type']):
+                client.enqueue(protocol.safe_encode(frame))
+
+    async def on_client_subscribe(self, client: Client) -> None:
+        """購読を変えた直後に現在の状態を配り直す。
+
+        後から costmap を購読したクライアントに全量を届けるため。Nav2 は
+        全量を二度と publish しないので、待っても来ない（ADR-0002）。
+        """
+        await asyncio.sleep(0)
+        self._send_snapshot(client)
 
     async def on_client_disconnect(self, client: Client) -> None:
         """接続が切れたときの後始末。
@@ -154,6 +213,7 @@ async def _serve(node: Gateway, token: str) -> None:
         mode=node.mode,
         on_message=node.on_client_message,
         on_connect=node.on_client_connect,
+        on_subscribe=node.on_client_subscribe,
         on_disconnect=node.on_client_disconnect,
     )
     await node.server.serve(node.bind_address, node.port)

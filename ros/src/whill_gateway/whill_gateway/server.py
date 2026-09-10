@@ -48,7 +48,9 @@ class Client:
         self.drop_scheduled = False
 
     def wants(self, kind: str) -> bool:
-        return kind in self.streams
+        # costmap_update は costmap の購読に含まれる。独立させると
+        # 「地図が固まる」構成を作れてしまう（protocol.stream_of 参照）。
+        return protocol.stream_of(kind) in self.streams
 
     def enqueue(self, payload: str) -> bool:
         """送信キューに積む。詰まっていたら False。"""
@@ -72,6 +74,7 @@ class GatewayServer:
     def __init__(self, *, token: str, robot_id: str, mode: str,
                  on_message: MessageHandler | None = None,
                  on_connect: Callable[[Client], Awaitable[None]] | None = None,
+                 on_subscribe: Callable[[Client], Awaitable[None]] | None = None,
                  on_disconnect: Callable[[Client], Awaitable[None]] | None = None) -> None:
         if not token:
             # 起動前に必ず落とす。無認証で待ち受ける状態を作らない。
@@ -81,6 +84,7 @@ class GatewayServer:
         self.mode = mode
         self._on_message = on_message
         self._on_connect = on_connect
+        self._on_subscribe = on_subscribe
         self._on_disconnect = on_disconnect
         self._clients: set[Client] = set()
         self._server: Any = None
@@ -182,6 +186,13 @@ class GatewayServer:
                     client.streams = protocol.parse_subscribe(message)
                 except protocol.ProtocolError as exc:
                     await self._send(client, protocol.error(str(exc)))
+                    continue
+                # 購読を変えた直後に、いま持っている状態を配り直す。
+                # これが無いと、後から costmap や tf を購読しても
+                # 「次の publish」を待つことになる。costmap の全量は
+                # 二度と来ないので永久に待つ（ADR-0002）。
+                if self._on_subscribe:
+                    await self._on_subscribe(client)
                 continue
 
             if self._on_message:

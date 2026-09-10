@@ -71,6 +71,21 @@ STREAMS = frozenset({
     MSG_TF, MSG_DIAGNOSTICS, MSG_IMAGE,
 })
 
+# フレーム種別 → それが属するストリーム。
+#
+# `costmap_update` を独立したストリームにしない。costmap を購読しているのに
+# 部分更新が来ない構成を作れてしまうと、**地図が最初の 1 枚で固まる**
+# （ADR-0002 の失敗そのもの）。実際、この対応表を入れる前は
+# costmap_update が broadcast で捨てられていた。
+_STREAM_OF = {
+    MSG_COSTMAP_UPDATE: MSG_COSTMAP,
+}
+
+
+def stream_of(kind: str) -> str:
+    """そのフレームを受け取るのに必要な購読名を返す。"""
+    return _STREAM_OF.get(kind, kind)
+
 DEFAULT_STREAMS = frozenset({MSG_STATUS, MSG_PARAMS, MSG_COSTMAP, MSG_POSE, MSG_PATH})
 """何も指定せずに繋いだときに流れるもの。画像と tf は明示的に要求させる。"""
 

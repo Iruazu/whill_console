@@ -78,6 +78,13 @@ whill run --robot cr2-01 --mode mock --dry-run
 # 宣言トピックが全部出ているか (Phase 0 の受け入れ判定)
 whill doctor --robot cr2-01 --mode mock
 
+# gateway に繋いでフレームを覗く (Phase 2 の受け入れ判定)
+# ブラウザを開かずに「costmap と pose が届く」ことを確かめられる。
+# UI のバグと gateway のバグを切り分けるときにも使う。
+whill tap --seconds 8
+whill tap --seconds 5 --stream tf --stream diagnostics --verbose
+whill tap --host 192.168.1.20 --seconds 5     # 別PC の gateway へ
+
 # 個体一覧と TF の採寸状況
 whill robots
 
@@ -148,6 +155,8 @@ skip の理由がログに出る（全部 skip されて緑、を見逃さない
 | `generate_nav2_params --check` が「N 件が反映されていない」で落ちる | registry のキー名がテンプレートの構造と合っていない。Nav2 の costmap は `local_costmap: local_costmap: ros__parameters:` と二重に入れ子になる点に注意。 |
 | gateway が `WHILL_GATEWAY_TOKEN が未設定` で落ちる | 仕様どおり。無認証では起動しない。 |
 | gateway は起動しているのにブラウザから繋がらない | `python3-websockets` が入っていないか確認する。入っていると壊れる（ADR-0003）。`python3-aiohttp` を使うこと。 |
+| `whill tap` で costmap が 1 通も来ない | gateway が全量を取りこぼしている可能性。Nav2 は全量を latched で 1 回しか出さないので、gateway より後に Nav2 を起動し直すと届かない。gateway を再起動する。 |
+| 俯瞰図が最初の 1 枚で固まる | `costmap_update` を受けていない。`whill tap --verbose` で `update` 行が出るか確認する。 |
 | gateway が `address already in use` で落ちる | 前回のプロセスが残っている。`ss -ltnp \| grep 8765` で PID を見て落とす。 |
 | `mode=real` / `mode=sim` で例外が出る | 未配線。仕様どおり（黙って起動しないより落とす）。`docs/open-questions.md` K5。 |
 
