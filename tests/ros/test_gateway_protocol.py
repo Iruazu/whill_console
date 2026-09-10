@@ -165,3 +165,26 @@ def test_safe_encode_recurses_into_containers():
 def test_encode_is_compact():
     """costmap を毎秒流すので、区切りの空白も惜しむ。"""
     assert ', ' not in protocol.encode({'type': 'status', 'a': 1, 'b': 2})
+
+
+# ---- ストリームの帰属 ------------------------------------------------------
+
+
+def test_costmap_update_belongs_to_the_costmap_stream():
+    """部分更新を独立したストリームにしない。
+
+    独立させると「costmap は購読しているのに部分更新が来ない」構成を
+    作れてしまい、地図が最初の 1 枚で固まる（ADR-0002 の失敗そのもの）。
+    実際、この対応表を入れる前は broadcast で捨てられていた。
+    """
+    assert protocol.stream_of(protocol.MSG_COSTMAP_UPDATE) == protocol.MSG_COSTMAP
+
+
+def test_stream_of_is_identity_for_plain_frames():
+    for kind in (protocol.MSG_POSE, protocol.MSG_PATH, protocol.MSG_TF):
+        assert protocol.stream_of(kind) == kind
+
+
+def test_costmap_update_is_not_separately_subscribable():
+    """subscribe で costmap_update を選べないこと（選ばせると混乱する）。"""
+    assert protocol.MSG_COSTMAP_UPDATE not in protocol.STREAMS

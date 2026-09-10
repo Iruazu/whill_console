@@ -455,6 +455,19 @@ params:
     description: WebSocket へ costmap を流す上限レート。実機PC の CPU 負荷は実機検証待ち。
 
   - node: whill_gateway
+    name: pose_publish_rate
+    type: double
+    default: 10.0
+    range: {min: 1.0, max: 30.0, step: 1.0}
+    unit: Hz
+    live: true
+    safety_class: none
+    description: >-
+      pose を WebSocket へ流す上限レート。EKF は 30 Hz で出すが、2D 俯瞰図に
+      その全部は要らない。Wi-Fi 越しでフレーム数がそのまま帯域になるので、
+      滑らかさが足りないと感じてから上げること。
+
+  - node: whill_gateway
     name: image_publish_rate
     type: double
     default: 1.0

@@ -168,6 +168,57 @@ def doctor(
     console.print(f'[green]宣言された {len(expected)} 件すべて publish されている[/green]')
 
 
+# ---- tap -------------------------------------------------------------------
+
+
+@app.command()
+def tap(
+    host: str = typer.Option('127.0.0.1', '--host', help='gateway のホスト'),
+    port: int = typer.Option(8765, '--port'),
+    seconds: float = typer.Option(5.0, '--seconds', '-s', help='何秒つなぐか'),
+    stream: list[str] = typer.Option(None, '--stream', help='購読するストリーム'),
+    verbose: bool = typer.Option(False, '--verbose', '-v', help='1 通ずつ表示'),
+) -> None:
+    """gateway に繋いでフレームを覗く。
+
+    Phase 2 の受け入れ条件（costmap と pose が JSON で届く）を、ブラウザを
+    開かずに確かめる。UI のバグと gateway のバグの切り分けにも使う。
+
+    トークンは環境変数 WHILL_GATEWAY_TOKEN から読む。
+    """
+    import asyncio
+
+    from whill_cli.tap import TapError, summarize
+    from whill_cli.tap import tap as run_tap
+
+    token = os.environ.get('WHILL_GATEWAY_TOKEN', '')
+    if not token:
+        console.print('[red]WHILL_GATEWAY_TOKEN が未設定[/red]')
+        raise typer.Exit(2)
+
+    url = f'ws://{host}:{port}'
+    console.print(f'{url} に {seconds:.0f} 秒つなぐ')
+
+    try:
+        counts = asyncio.run(run_tap(
+            url, token, seconds=seconds, streams=list(stream) if stream else None,
+            on_frame=(lambda f: console.print(summarize(f))) if verbose else None))
+    except TapError as exc:
+        console.print(f'[red]{exc}[/red]')
+        raise typer.Exit(1) from None
+
+    table = Table(title=f'{seconds:.0f} 秒間に届いたフレーム')
+    table.add_column('type')
+    table.add_column('件数', justify='right')
+    for kind, count in sorted(counts.items(), key=lambda kv: -kv[1]):
+        table.add_row(kind, str(count))
+    console.print(table)
+
+    if not counts:
+        console.print('[red]1 通も届かなかった[/red]')
+        raise typer.Exit(1)
+
+
 # ---- params ----------------------------------------------------------------
 
 

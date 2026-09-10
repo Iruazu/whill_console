@@ -56,6 +56,9 @@ ignore = [
     "RUF001",
     "RUF002",
     "RUF003",
+    # typer は引数のデフォルトで Option()/Argument() を呼ぶのが規定の使い方。
+    # この規則に従うと typer が使えなくなるので外す。
+    "B008",
 ]
 
 [tool.pytest.ini_options]

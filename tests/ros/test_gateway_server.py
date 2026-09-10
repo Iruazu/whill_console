@@ -346,3 +346,75 @@ async def test_auth_timeout_closes_the_connection(monkeypatch):
     assert socket.closed
     errors = [f for f in socket.frames() if f['type'] == protocol.MSG_ERROR]
     assert errors and '認証フレーム' in errors[-1]['reason']
+
+
+# ---- 購読の帰属と再配布 ----------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_costmap_update_follows_the_costmap_subscription():
+    """costmap を購読していれば部分更新も届くこと。
+
+    届かないと地図が最初の 1 枚で固まる（ADR-0002）。実機で気づくと
+    「なぜか画面が更新されない」という切り分けにくい症状になる。
+    """
+    server = make_server()
+    subscribe = json.dumps({'type': 'subscribe', 'streams': [protocol.MSG_COSTMAP]})
+    socket = FakeSocket([auth(), subscribe], hold=True)
+    task = asyncio.ensure_future(server.handle(socket))
+    await asyncio.sleep(0.01)
+
+    server.broadcast({'type': protocol.MSG_COSTMAP_UPDATE, 'x': 0, 'y': 0})
+    await asyncio.sleep(0.01)
+    assert protocol.MSG_COSTMAP_UPDATE in socket.kinds()
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+@pytest.mark.asyncio
+async def test_subscribe_triggers_a_resend_of_current_state():
+    """購読を変えたら、いま持っている状態を配り直すこと。
+
+    後から costmap を購読したクライアントは、これが無いと「次の publish」を
+    永久に待つ。Nav2 は全量を二度と出さない（ADR-0002）。
+    """
+    sent_snapshots = 0
+
+    async def on_subscribe(client: Client) -> None:
+        nonlocal sent_snapshots
+        sent_snapshots += 1
+        client.enqueue(protocol.safe_encode({'type': protocol.MSG_COSTMAP, 'rle': [0, 1]}))
+
+    server = make_server(on_subscribe=on_subscribe)
+    subscribe = json.dumps({'type': 'subscribe', 'streams': [protocol.MSG_COSTMAP]})
+    socket = FakeSocket([auth(), subscribe], hold=True)
+    task = asyncio.ensure_future(server.handle(socket))
+    await asyncio.sleep(0.02)
+
+    assert sent_snapshots == 1
+    assert protocol.MSG_COSTMAP in socket.kinds()
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+@pytest.mark.asyncio
+async def test_bad_subscribe_does_not_trigger_a_resend():
+    """不正な購読要求では配り直さない（拒否したのに状態を送るのは矛盾）。"""
+    called = False
+
+    async def on_subscribe(client: Client) -> None:
+        nonlocal called
+        called = True
+
+    server = make_server(on_subscribe=on_subscribe)
+    bad = json.dumps({'type': 'subscribe', 'streams': ['costmpa']})
+    socket = FakeSocket([auth(), bad])
+    await server.handle(socket)
+
+    assert called is False
+    errors = [f for f in socket.frames() if f['type'] == protocol.MSG_ERROR]
+    assert errors and '未知のストリーム' in errors[-1]['reason']
