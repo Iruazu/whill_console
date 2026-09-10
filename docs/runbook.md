@@ -149,7 +149,12 @@ whill params probe --key controller_server.FollowPath.min_lookahead_dist
 # 直せばよいかが分かる
 whill latency --repeats 20
 
-# 仮想障害物を置く / 消す (Web からの操作は Phase 4 の後続 issue)
+# 仮想障害物を置く / 消す (WebSocket 経由。俯瞰図からの操作は Phase 4 の後続 issue)
+#   action: replace / add / remove / clear
+#   frame_id は map 固定、半径は 0.05〜5.0 m、個数は 200 まで
+#   **永続化しない。** gateway を再起動すると消える (docs/open-questions.md Q5)
+
+# ROS 側から直接置く場合
 ros2 topic pub --once /whill/virtual_obstacles whill_msgs/msg/VirtualObstacleArray \
   '{header: {frame_id: map}, obstacles: [{id: t1, frame_id: map, center: {x: 4.0, y: 0.0}, radius: 1.0}]}'
 ros2 topic pub --once /whill/virtual_obstacles whill_msgs/msg/VirtualObstacleArray \

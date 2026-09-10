@@ -31,12 +31,20 @@ from typing import Any
 import rclpy
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
+from rclpy.qos import (
+    QoSDurabilityPolicy,
+    QoSHistoryPolicy,
+    QoSProfile,
+    QoSReliabilityPolicy,
+)
+from whill_msgs.msg import VirtualObstacle, VirtualObstacleArray
 
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Point, Twist
 
 from action_msgs.srv import CancelGoal
 
 from whill_gateway import protocol
+from whill_gateway.obstacles import ObstacleError, ObstacleStore, apply_command
 from whill_gateway.param_bridge import MovingWatch, ParamBridge
 from whill_gateway.safety import ManualControl
 from whill_gateway.server import Client, GatewayServer
@@ -113,6 +121,22 @@ class Gateway(Node):
         # まさにゼロを出さなければならない状況（設計原則 4）。
         manual_period = 1.0 / float(self.get_parameter('manual_publish_rate').value)
         self.create_timer(manual_period, self._tick_manual)
+
+        # ---- 仮想障害物 ----------------------------------------------------
+        # costmap 層は全量置換で受け取るので、gateway が現在の一覧を保持し、
+        # 1 個足すたびに全部送り直す。
+        self.obstacles = ObstacleStore()
+        # 層の購読 QoS (reliable + transient_local) に合わせる。合わないと
+        # 1 通も届かない（繋がらないのではなく、静かに何も来ない）。
+        self.obstacle_pub = self.create_publisher(
+            VirtualObstacleArray, '/whill/virtual_obstacles',
+            QoSProfile(depth=1,
+                       reliability=QoSReliabilityPolicy.RELIABLE,
+                       durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+                       history=QoSHistoryPolicy.KEEP_LAST))
+        # 起動時に空を 1 通出す。前のセッションの latched が残っていると、
+        # 誰も置いていない障害物が costmap に載ったままになる。
+        self._publish_obstacles()
 
         self.create_timer(STATUS_PERIOD_SEC, self._publish_status)
         self.create_timer(TF_SUMMARY_PERIOD_SEC, self.telemetry.publish_tf_summary)
@@ -193,6 +217,27 @@ class Gateway(Node):
             return
         self._cancel_nav.call_async(CancelGoal.Request())
 
+    def _publish_obstacles(self) -> None:
+        """保持している全量を costmap 層へ流す。"""
+        message = VirtualObstacleArray()
+        message.header.stamp = self.get_clock().now().to_msg()
+        message.header.frame_id = 'map'
+        for item in self.obstacles.all():
+            obstacle = VirtualObstacle()
+            obstacle.id = item['id']
+            obstacle.frame_id = item['frame_id']
+            obstacle.center = Point(x=item['x'], y=item['y'], z=0.0)
+            obstacle.radius = float(item['radius'])
+            message.obstacles.append(obstacle)
+        self.obstacle_pub.publish(message)
+
+    def _obstacles_frame(self) -> dict[str, Any]:
+        return {
+            'type': protocol.MSG_OBSTACLES,
+            'obstacles': self.obstacles.all(),
+            'stamp': self.get_clock().now().nanoseconds / 1e9,
+        }
+
     def _on_cmd_vel(self, msg: Twist) -> None:
         self.moving.observe(msg.linear.x, msg.angular.z,
                             self.get_clock().now().nanoseconds / 1e9)
@@ -272,6 +317,17 @@ class Gateway(Node):
             self.emit_now(result)
             return
 
+        if kind == protocol.MSG_VIRTUAL_OBSTACLES:
+            try:
+                apply_command(self.obstacles, message)
+            except ObstacleError as exc:
+                raise protocol.ProtocolError(str(exc)) from None
+            self._publish_obstacles()
+            # 全クライアントに配る。1 人が置いた障害物が別の画面に
+            # 出ないと、「なぜ経路が変か」の原因を共有できない。
+            self.emit_now(self._obstacles_frame())
+            return
+
         if kind == protocol.MSG_PRESET_APPLY:
             name = protocol.require(message, 'name', str)
             results = await self.params.apply_preset(name, source='ui')
@@ -318,6 +374,10 @@ class Gateway(Node):
         for frame in self.telemetry.snapshot():
             if client.wants(frame['type']):
                 client.enqueue(protocol.safe_encode(frame))
+        # 仮想障害物も配る。**これが無いと後から繋いだブラウザに
+        # 障害物が見えない** — costmap の全量と同じ話（ADR-0002）。
+        if client.wants(protocol.MSG_OBSTACLES):
+            client.enqueue(protocol.safe_encode(self._obstacles_frame()))
 
     async def _send_params(self, client: Client) -> None:
         """registry の spec と実ノードの現在値を配る。
