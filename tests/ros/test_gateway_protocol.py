@@ -86,12 +86,23 @@ def test_default_streams_exclude_expensive_ones():
 
 
 def test_streams_are_all_server_messages():
-    """購読できるストリームは全て server → client のフレームであること。"""
-    assert protocol.STREAMS <= {
-        protocol.MSG_STATUS, protocol.MSG_PARAMS, protocol.MSG_COSTMAP,
-        protocol.MSG_COSTMAP_UPDATE, protocol.MSG_POSE, protocol.MSG_PATH,
-        protocol.MSG_TF, protocol.MSG_DIAGNOSTICS, protocol.MSG_IMAGE,
-    }
+    """購読できるストリームは全て server → client のフレームであること。
+
+    一覧を手で二重に持たない。フレームを足したときに片方だけ更新して
+    「購読できないフレーム」を作るのを防ぐ。
+    """
+    assert protocol.STREAMS <= protocol.SERVER_MESSAGES
+
+
+def test_server_and_client_messages_do_not_overlap():
+    """同じ type を両方向で使わない。どちらの意味か曖昧になる。"""
+    assert protocol.SERVER_MESSAGES & protocol.CLIENT_MESSAGES == frozenset()
+
+
+def test_scan_is_subscribable_and_on_by_default():
+    """俯瞰図の背景に要るので既定で流す。"""
+    assert protocol.MSG_SCAN in protocol.STREAMS
+    assert protocol.MSG_SCAN in protocol.DEFAULT_STREAMS
 
 
 # ---- 認証前に流してよいもの ------------------------------------------------

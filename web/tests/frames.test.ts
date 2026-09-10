@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { PARAM_CHANGE_LIMIT, applyFrame, emptyFrameState, isStale } from '../src/lib/frames'
+import {
+  COSTMAP_KINDS,
+  PARAM_CHANGE_LIMIT,
+  applyFrame,
+  emptyFrameState,
+  isStale,
+} from '../src/lib/frames'
 import type { FrameState } from '../src/lib/frames'
 
 /** フレームの解釈が正しいことを、ブラウザ抜きで固める。
@@ -250,13 +256,34 @@ describe('その他のフレーム', () => {
 
 describe('古さの判定', () => {
   it('一度も来ていないものは古い扱い', () => {
-    expect(isStale(emptyFrameState(), 'pose', 1000, 500)).toBe(true)
+    expect(isStale(emptyFrameState().receivedAt, 'pose', 1000, 500)).toBe(true)
   })
 
   it('しきい値を超えたら古い', () => {
     // pose が来ていないのに最新位置として描かないため
     const state = apply(emptyFrameState(), { type: 'pose', x: 0, y: 0, yaw: 0 }, 1000)
-    expect(isStale(state, 'pose', 1400, 500)).toBe(false)
-    expect(isStale(state, 'pose', 1600, 500)).toBe(true)
+    expect(isStale(state.receivedAt, 'pose', 1400, 500)).toBe(false)
+    expect(isStale(state.receivedAt, 'pose', 1600, 500)).toBe(true)
+  })
+
+  it('全量を受けた直後の costmap は古くない', () => {
+    // 部分更新だけを見ていると、全量を受けた直後に「古い」と判定して
+    // 薄く描いてしまう。実際にこの不具合を踏んだ。
+    const state = apply(emptyFrameState(), fullCostmap(), 1000)
+    expect(isStale(state.receivedAt, COSTMAP_KINDS, 1100, 5000)).toBe(false)
+  })
+
+  it('全量も部分更新も途絶えたら古い', () => {
+    const state = apply(emptyFrameState(), fullCostmap(), 1000)
+    expect(isStale(state.receivedAt, COSTMAP_KINDS, 9000, 5000)).toBe(true)
+  })
+
+  it('部分更新が来ていれば全量が古くても新しい扱い', () => {
+    let state = apply(emptyFrameState(), fullCostmap(), 1000)
+    state = apply(state, {
+      type: 'costmap_update', scope: 'local',
+      x: 0, y: 0, width: 1, height: 1, rle: [50, 1], stamp: 2, seq: 1,
+    }, 9000)
+    expect(isStale(state.receivedAt, COSTMAP_KINDS, 9100, 5000)).toBe(false)
   })
 })

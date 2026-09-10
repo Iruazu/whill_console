@@ -7,6 +7,7 @@ import type {
   ParamSpec,
   PathFrame,
   PoseFrame,
+  ScanFrame,
   StackStatus,
   TfSummary,
 } from './types'
@@ -33,6 +34,7 @@ export interface FrameState {
   costmaps: Partial<Record<CostmapScope, CostmapState>>
   pose: PoseFrame | null
   path: PathFrame | null
+  scan: ScanFrame | null
   status: StackStatus | null
   params: ParamSpec[]
   /** registry と実ノードの値がずれているもの。異常なので隠さない。 */
@@ -55,6 +57,7 @@ export const emptyFrameState = (): FrameState => ({
   costmaps: {},
   pose: null,
   path: null,
+  scan: null,
   status: null,
   params: [],
   mismatches: [],
@@ -191,6 +194,25 @@ export function applyFrame(
         },
       }
 
+    case 'scan':
+      return {
+        handled: true,
+        state: {
+          ...state,
+          receivedAt: stamp,
+          scan: {
+            frameId: str(frame.frame_id),
+            angleMin: num(frame.angle_min),
+            angleIncrement: num(frame.angle_increment),
+            rangeMax: num(frame.range_max, 100),
+            ranges: ((frame.ranges as (number | null)[]) ?? []).map((v) =>
+              typeof v === 'number' && Number.isFinite(v) ? v : null,
+            ),
+            stamp: num(frame.stamp),
+          },
+        },
+      }
+
     case 'status':
       return {
         handled: true,
@@ -317,14 +339,24 @@ function toParamSpec(raw: WireFrame): ParamSpec {
  *
  * 途絶えたストリームを最新のように描かないための判定。pose が 3 秒来て
  * いないのに車体を最新位置として描くと、実際とずれた絵を信じることになる。
+ *
+ * 複数の種別を渡せる。costmap は全量と部分更新のどちらが来ても「新しい」
+ * ので、両方を見る必要がある（全量を受けた直後に「古い」と判定して
+ * 薄く描いてしまう不具合を踏んだ）。
  */
 export function isStale(
-  state: FrameState,
-  kind: string,
+  receivedAt: Record<string, number>,
+  kinds: string | string[],
   now: number,
   thresholdMs: number,
 ): boolean {
-  const at = state.receivedAt[kind]
-  if (at === undefined) return true
-  return now - at > thresholdMs
+  const list = Array.isArray(kinds) ? kinds : [kinds]
+  const latest = list
+    .map((kind) => receivedAt[kind])
+    .filter((at): at is number => at !== undefined)
+  if (latest.length === 0) return true
+  return now - Math.max(...latest) > thresholdMs
 }
+
+/** costmap の古さを見るときに使う組。全量と部分更新の両方。 */
+export const COSTMAP_KINDS = ['costmap', 'costmap_update']

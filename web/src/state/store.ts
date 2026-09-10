@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-import { applyFrame, emptyFrameState, isStale } from '../lib/frames'
+import { applyFrame, emptyFrameState } from '../lib/frames'
 import type { FrameState } from '../lib/frames'
 import type { ConnectionState } from '../lib/types'
 
@@ -58,5 +58,3 @@ export const useConsoleStore = create<ConsoleState>((set) => ({
   // 部分更新を貼ると壊れた絵になる。
   reset: () => set({ ...emptyFrameState(), unhandledFrames: 0 }),
 }))
-
-export { isStale }

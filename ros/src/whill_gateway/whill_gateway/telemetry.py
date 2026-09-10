@@ -25,7 +25,7 @@ from rclpy.qos import (
     QoSProfile,
     QoSReliabilityPolicy,
 )
-from sensor_msgs.msg import CompressedImage
+from sensor_msgs.msg import CompressedImage, LaserScan
 from tf2_msgs.msg import TFMessage
 
 from whill_gateway import costmap_codec, protocol
@@ -49,6 +49,23 @@ STATIC_TF_QOS = QoSProfile(
     history=QoSHistoryPolicy.KEEP_LAST,
     depth=100,
 )
+
+# /scan と圧縮画像は best-effort sensor-data QoS で出る。reliable で購読すると
+# QoS 不一致で 1 通も届かない（繋がらないのではなく、静かに何も来ない）。
+SENSOR_QOS = QoSProfile(
+    reliability=QoSReliabilityPolicy.BEST_EFFORT,
+    durability=QoSDurabilityPolicy.VOLATILE,
+    history=QoSHistoryPolicy.KEEP_LAST,
+    depth=5,
+)
+
+SCAN_MAX_POINTS = 360
+"""1 スキャンで送る点の上限。
+
+VLP-16 は 10 Hz で約 900 点。俯瞰図の背景としてはそこまで要らないうえ、
+JSON で 900 個の float を毎回送ると帯域を無駄にする。等間隔に間引く。
+細かい形状が見たいときは Foxglove で点群を見ること（設計原則 2）。
+"""
 
 COSTMAP_SCOPES = {
     'local': '/local_costmap/costmap',
@@ -91,13 +108,15 @@ class Telemetry:
     """購読とフレーム化。ROS のスレッドで動く。"""
 
     def __init__(self, node: Node, emit: Callable[[dict[str, Any]], None],
-                 *, costmap_hz: float, pose_hz: float, image_hz: float) -> None:
+                 *, costmap_hz: float, pose_hz: float, scan_hz: float,
+                 image_hz: float) -> None:
         self.node = node
         self.emit = emit
         self._seq = 0
         self._costmap_limit = {scope: RateLimiter(costmap_hz) for scope in COSTMAP_SCOPES}
         self._update_limit = {scope: RateLimiter(costmap_hz) for scope in COSTMAP_SCOPES}
         self._pose_limit = RateLimiter(pose_hz)
+        self._scan_limit = RateLimiter(scan_hz)
         self._image_limit = RateLimiter(image_hz)
         # 全量を受けた scope だけ部分更新を流す。全量を持たないクライアントに
         # 部分更新だけ送っても貼り込む先が無い。
@@ -111,6 +130,7 @@ class Telemetry:
         self._latest_full: dict[str, dict[str, Any]] = {}
         self._latest_pose: dict[str, Any] | None = None
         self._latest_path: dict[str, Any] | None = None
+        self._latest_scan: dict[str, Any] | None = None
         self._tf_parents: dict[str, str] = {}
         self._tf_dirty = False
 
@@ -136,6 +156,9 @@ class Telemetry:
             Odometry, '/odometry/filtered', self._on_odometry, 10)
 
         node.create_subscription(Path, '/plan', self._on_path, 10)
+        # /scan は best-effort sensor-data QoS で出る。reliable で購読すると
+        # 繋がらない（既定の QoS 不一致）。
+        node.create_subscription(LaserScan, '/scan', self._on_scan, SENSOR_QOS)
         node.create_subscription(DiagnosticArray, '/diagnostics', self._on_diagnostics, 10)
 
         # tf は要約だけ流す。変換行列そのものは送らない（3D は Foxglove に
@@ -147,13 +170,15 @@ class Telemetry:
             CompressedImage, '/camera/camera/color/image_raw/compressed',
             self._on_image, 5)
 
-    def set_rates(self, *, costmap_hz: float, pose_hz: float, image_hz: float) -> None:
+    def set_rates(self, *, costmap_hz: float, pose_hz: float, scan_hz: float,
+                  image_hz: float) -> None:
         """live パラメータの変更を反映する。"""
         for limiter in self._costmap_limit.values():
             limiter.set_rate(costmap_hz)
         for limiter in self._update_limit.values():
             limiter.set_rate(costmap_hz)
         self._pose_limit.set_rate(pose_hz)
+        self._scan_limit.set_rate(scan_hz)
         self._image_limit.set_rate(image_hz)
 
     def _now(self) -> float:
@@ -231,6 +256,49 @@ class Telemetry:
         self._latest_path = frame
         self.emit(frame)
 
+    # ---- LiDAR -------------------------------------------------------------
+
+    def _on_scan(self, msg: LaserScan) -> None:
+        """LaserScan を俯瞰図用に間引いて送る。
+
+        角度は `angle_min` と `angle_increment` から復元できるので送らない。
+        間引いたぶん increment が変わる点に注意（`angle_increment` は
+        間引き後の値を入れる）。
+
+        無限遠と range 外は null にする。0 を入れると「原点に障害物がある」
+        ように描かれる。
+        """
+        if not self._scan_limit.allow(self._now()):
+            return
+
+        ranges = list(msg.ranges)
+        if not ranges:
+            return
+        step = max(1, (len(ranges) + SCAN_MAX_POINTS - 1) // SCAN_MAX_POINTS)
+        sampled = ranges[::step]
+
+        cleaned: list[float | None] = []
+        for value in sampled:
+            if value != value or value in (float('inf'), float('-inf')):
+                cleaned.append(None)
+            elif value < msg.range_min or value > msg.range_max:
+                cleaned.append(None)
+            else:
+                # cm 単位に丸める。俯瞰図の解像度は costmap の 5 cm なので
+                # これ以上の精度は帯域の無駄。
+                cleaned.append(round(float(value), 2))
+
+        self._latest_scan = {
+            'type': protocol.MSG_SCAN,
+            'frame_id': msg.header.frame_id,
+            'angle_min': float(msg.angle_min),
+            'angle_increment': float(msg.angle_increment) * step,
+            'range_max': float(msg.range_max),
+            'ranges': cleaned,
+            'stamp': _stamp_seconds(msg.header),
+        }
+        self.emit(self._latest_scan)
+
     # ---- tf / 診断 ---------------------------------------------------------
 
     def _on_tf(self, msg: TFMessage) -> None:
@@ -272,6 +340,8 @@ class Telemetry:
             frames.append(self._latest_pose)
         if self._latest_path is not None:
             frames.append(self._latest_path)
+        if self._latest_scan is not None:
+            frames.append(self._latest_scan)
         if self._tf_parents:
             frames.append({
                 'type': protocol.MSG_TF,

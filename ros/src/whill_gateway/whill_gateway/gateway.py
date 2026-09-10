@@ -79,6 +79,7 @@ class Gateway(Node):
             self, self.emit,
             costmap_hz=float(self.get_parameter('costmap_publish_rate').value),
             pose_hz=float(self.get_parameter('pose_publish_rate').value),
+            scan_hz=float(self.get_parameter('scan_publish_rate').value),
             image_hz=float(self.get_parameter('image_publish_rate').value),
         )
         # live パラメータなので、走行中に変えられる。set のたびに反映する。
@@ -137,7 +138,8 @@ class Gateway(Node):
         """
         from rcl_interfaces.msg import SetParametersResult
 
-        names = ('costmap_publish_rate', 'pose_publish_rate', 'image_publish_rate')
+        names = ('costmap_publish_rate', 'pose_publish_rate',
+                 'scan_publish_rate', 'image_publish_rate')
         incoming = {p.name: float(p.value) for p in params if p.name in names}
         if incoming:
             resolved = {
@@ -147,6 +149,7 @@ class Gateway(Node):
             self.telemetry.set_rates(
                 costmap_hz=resolved['costmap_publish_rate'],
                 pose_hz=resolved['pose_publish_rate'],
+                scan_hz=resolved['scan_publish_rate'],
                 image_hz=resolved['image_publish_rate'],
             )
         return SetParametersResult(successful=True)

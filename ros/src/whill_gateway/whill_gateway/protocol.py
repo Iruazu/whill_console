@@ -59,7 +59,19 @@ MSG_POSE = 'pose'
 MSG_PATH = 'path'
 MSG_TF = 'tf'
 MSG_DIAGNOSTICS = 'diagnostics'
+MSG_SCAN = 'scan'
 MSG_IMAGE = 'image'
+
+SERVER_MESSAGES = frozenset({
+    MSG_HELLO, MSG_STATUS, MSG_ERROR, MSG_PARAMS, MSG_PARAM_CHANGED,
+    MSG_COSTMAP, MSG_COSTMAP_UPDATE, MSG_POSE, MSG_PATH, MSG_SCAN,
+    MSG_TF, MSG_DIAGNOSTICS, MSG_IMAGE,
+})
+"""server → client のフレーム一覧。
+
+`STREAMS` がこの部分集合であることをテストで担保する。フレームを足したのに
+こちらへ追加し忘れると、購読できないフレームを作ってしまう。
+"""
 
 # 認証前に送ってよいのはこれだけ。データフレームは 1 つも含めない。
 PRE_AUTH_MESSAGES = frozenset({MSG_HELLO, MSG_ERROR})
@@ -67,7 +79,7 @@ PRE_AUTH_MESSAGES = frozenset({MSG_HELLO, MSG_ERROR})
 # `subscribe` で選べるストリーム。ここに無い名前は拒否する（typo を
 # 「黙って何も届かない」に変えないため）。
 STREAMS = frozenset({
-    MSG_STATUS, MSG_PARAMS, MSG_COSTMAP, MSG_POSE, MSG_PATH,
+    MSG_STATUS, MSG_PARAMS, MSG_COSTMAP, MSG_POSE, MSG_PATH, MSG_SCAN,
     MSG_TF, MSG_DIAGNOSTICS, MSG_IMAGE,
 })
 
@@ -86,7 +98,9 @@ def stream_of(kind: str) -> str:
     """そのフレームを受け取るのに必要な購読名を返す。"""
     return _STREAM_OF.get(kind, kind)
 
-DEFAULT_STREAMS = frozenset({MSG_STATUS, MSG_PARAMS, MSG_COSTMAP, MSG_POSE, MSG_PATH})
+DEFAULT_STREAMS = frozenset({
+    MSG_STATUS, MSG_PARAMS, MSG_COSTMAP, MSG_POSE, MSG_PATH, MSG_SCAN,
+})
 """何も指定せずに繋いだときに流れるもの。画像と tf は明示的に要求させる。"""
 
 

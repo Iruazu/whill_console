@@ -10,6 +10,12 @@ import { useConsoleStore } from '../state/store'
 export function useStoreProbe(): void {
   useEffect(() => {
     if (!import.meta.env.DEV) return
+    // テストから合成フレームを流し込めるようにする。gateway を起動せずに
+    // 「地図が実際に描かれるか」を確かめるため（#20 の受け入れ判定）。
+    ;(window as unknown as { __whillIngest: unknown }).__whillIngest = (
+      frame: Record<string, unknown>,
+    ) => useConsoleStore.getState().ingest(frame)
+
     return useConsoleStore.subscribe((state) => {
       ;(window as unknown as { __whill: unknown }).__whill = {
         connection: state.connection,
