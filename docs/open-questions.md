@@ -10,7 +10,6 @@
 
 | # | 内容 | 状況 |
 |---|---|---|
-| Q1 | **IMU は BNO085 か RT-USB-9AXIS-00 か。** 実装計画書はモック対象を `bno085` と書いているが、現車 (cr2-01) に載っているのは RT 9軸 IMU (`2b72:0003`, CDC-ACM, LifecycleNode)。換装予定なのか、計画書の記載が過去の想定なのか未確認。 | **未解決。** Phase 0 は計画書どおり `bno085` という宣言名でモックを作った。トピック `/imu/data_rep145` と型は現車と同じなので上位への影響は無いが、`real` モードを配線する時点で決着が要る。 |
 | Q2 | **cr2-02 / cr2-03 の実機はいつ来るか。** 個体 yaml は cr2-01 のコピーで、TF は全て `measured: false`、シリアルポートと LiDAR IP は仮値。 | 未定。実車到着まで cr2-01 のみで開発する。 |
 | Q3 | **既存 `whill_lab0_ros2` の扱い。** 当面は launch から include する方針だが、Layer D と配車 UI をいつ `whill_platform` へ移植するか。 | 仮決め: Phase 2 は include、移植は実機復帰後。 |
 
@@ -39,3 +38,9 @@
 | K3 | **ROS を source した shell では pytest が ROS 製プラグインを自動 load して落ちる**（`launch_pytest` → `lark` 不在）。ini の `-p no:` は load 後に読まれるので効かない。 | `scripts/test.sh` が `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` を export する。直接 pytest を叩くときも同じ変数が要る。 |
 | K4 | **Playwright の WebKit を入れるには `sudo` が要る**（`playwright install --with-deps`）。 | ops-tablet プロジェクトは Chromium を 768px で使う。見たいのはレイアウトでありエンジン差ではない。実機 tablet の確認は B の実機検証待ちに計上。 |
 | K5 | **`mode=real` と `mode=sim` は未配線。** 呼ぶと明示的に例外で落ちる。 | 黙って何も起動しないより落ちるほうが安全（「実機モードで動いたつもり」を防ぐ）。real は実機復帰後、sim は `sim/` の world 整備後。 |
+
+## D. 解決済み
+
+| # | 内容 | 結論 |
+|---|---|---|
+| Q1 | IMU は BNO085 か RT-USB-9AXIS-00 か | **RT-USB-9AXIS-00。** 実装計画書の `bno085` は計画者の記載ミス（2026-09-10 ユーザー確認）。換装の予定は無い。宣言名を `rt_9axis`、モックを `mock_rt_9axis`、`real_package` を `rt_usb_9axisimu_driver` に修正済み。実ドライバは LifecycleNode なので `cr2-base.yaml` に `lifecycle: true` を宣言し、real モードの launch が `configure → activate` の間に約 1.5 s の待ちを入れる必要があることを明記した。 |

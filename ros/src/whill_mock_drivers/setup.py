@@ -25,7 +25,7 @@ setup(
         'console_scripts': [
             'mock_whill_serial = whill_mock_drivers.mock_whill_serial:main',
             'mock_velodyne = whill_mock_drivers.mock_velodyne:main',
-            'mock_bno085 = whill_mock_drivers.mock_bno085:main',
+            'mock_rt_9axis = whill_mock_drivers.mock_rt_9axis:main',
             'mock_realsense = whill_mock_drivers.mock_realsense:main',
         ],
     },

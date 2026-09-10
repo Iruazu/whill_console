@@ -145,6 +145,9 @@ BASE_SCHEMA: dict[str, Any] = {
                     'qos': {'enum': ['sensor_data', 'default']},
                     'enabled_by_default': {'type': 'boolean'},
                     'cold_boot_sequence': {'type': 'array', 'items': {'type': 'string'}},
+                    # 実ドライバが LifecycleNode かどうか。real モードの launch が
+                    # configure → activate の遷移と待ちを組む必要があるかを決める。
+                    'lifecycle': {'type': 'boolean'},
                     'publishes': {
                         'type': 'array',
                         'minItems': 1,

@@ -42,10 +42,15 @@ drivers:
       - {name: points_per_scan, topic: /velodyne_points, field: width, unit: pts, widget: number, warn: 12000, crit: 6000, compare: below}
       - {name: scan_rate,       topic: /velodyne_points, field: __rate, unit: Hz, widget: number, warn: 8.0,   crit: 5.0,  compare: below}
 
-  bno085:
-    description: 9軸 IMU。REP-145 準拠の姿勢付き Imu を出す。
-    real_package: bno085_driver
-    mock_node: mock_bno085
+  rt_9axis:
+    description: >-
+      RT-USB-9AXIS-00 (9軸 IMU)。REP-145 準拠の姿勢付き Imu を出す。
+      実ドライバは LifecycleNode で、configure → activate の間に約 1.5 s の
+      待ちが要る（詰めると activate が失敗する）。real モードの launch では
+      OnStateTransition → TimerAction → EmitEvent のパターンが必須。
+    real_package: rt_usb_9axisimu_driver
+    mock_node: mock_rt_9axis
+    lifecycle: true
     publishes:
       - {topic: /imu/data_rep145, type: sensor_msgs/msg/Imu, rate_hz: 100.0}
     telemetry:
@@ -81,7 +86,7 @@ derived_telemetry:
 modes:
   real:
     description: 実機ドライバ + 既存 Nav2 スタック
-    drivers: [whill_serial, velodyne, bno085]
+    drivers: [whill_serial, velodyne, rt_9axis]
     include_stack: true
     use_sim_time: false
   sim:
@@ -91,7 +96,7 @@ modes:
     use_sim_time: true
   mock:
     description: モックドライバ + 既存 Nav2 スタック。実機なしで開発するための既定モード。
-    drivers: [whill_serial, velodyne, bno085]
+    drivers: [whill_serial, velodyne, rt_9axis]
     include_stack: true
     use_sim_time: false
   replay:

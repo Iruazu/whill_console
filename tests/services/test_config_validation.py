@@ -139,8 +139,8 @@ def test_duplicate_topic_declaration_is_rejected(tmp_path):
     def mutate(root: Path):
         path = root / 'robots' / 'cr2-base.yaml'
         data = yaml.safe_load(path.read_text())
-        # bno085 が velodyne と同じトピックを出す宣言にする
-        data['drivers']['bno085']['publishes'].append(
+        # rt_9axis が velodyne と同じトピックを出す宣言にする
+        data['drivers']['rt_9axis']['publishes'].append(
             copy.deepcopy(data['drivers']['velodyne']['publishes'][0]))
         path.write_text(yaml.safe_dump(data, allow_unicode=True))
 
@@ -179,3 +179,25 @@ def test_domain_ids_are_distinct(robot_id):
            for r in cli_config.known_robots()}
     assert len(set(ids.values())) == len(ids), f'domain_id が重複している: {ids}'
     assert robot_id in ids
+
+
+def test_imu_driver_is_the_rt_9axis():
+    """実装計画書の `bno085` は記載ミス。現車は RT-USB-9AXIS-00。
+
+    宣言名が実機と食い違うと、real モードを配線する人が別のドライバを
+    探しに行く。ここで固定しておく（Q1、2026-09-10 ユーザー確認済み）。
+    """
+    drivers = cli_config.base_config()['drivers']
+    assert 'rt_9axis' in drivers
+    assert 'bno085' not in drivers
+    assert drivers['rt_9axis']['real_package'] == 'rt_usb_9axisimu_driver'
+
+
+def test_lifecycle_drivers_are_declared():
+    """LifecycleNode のドライバは `lifecycle: true` を宣言していること。
+
+    RT 9軸は configure → activate の間に約 1.5 s の待ちが要る。宣言が無いと
+    real モードの launch が通常ノードとして起動し、activate が失敗する。
+    """
+    drivers = cli_config.base_config()['drivers']
+    assert drivers['rt_9axis'].get('lifecycle') is True
