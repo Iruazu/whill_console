@@ -10,6 +10,9 @@ import type {
   ReplayFrame,
   ScanFrame,
   StackStatus,
+  TelemetryDriver,
+  TelemetryFrame,
+  TelemetryItem,
   TfSummary,
   VirtualObstacle,
 } from './types'
@@ -43,6 +46,8 @@ export interface FrameState {
   /** bag 再生の位置。replay モード以外では gateway が送ってこないので
    *  null のまま。**null を「0 秒」に潰さないこと。** */
   replay: ReplayFrame | null
+  /** ドライバのテレメトリ。閾値の判定は gateway 側で済んでいる。 */
+  telemetry: TelemetryFrame | null
   params: ParamSpec[]
   /** registry と実ノードの値がずれているもの。異常なので隠さない。 */
   mismatches: { key: string; registry: unknown; live: unknown }[]
@@ -76,6 +81,7 @@ export const emptyFrameState = (): FrameState => ({
   obstacles: [],
   status: null,
   replay: null,
+  telemetry: null,
   params: [],
   mismatches: [],
   unreachable: [],
@@ -274,6 +280,19 @@ export function applyFrame(
         },
       }
 
+    case 'telemetry':
+      return {
+        handled: true,
+        state: {
+          ...state,
+          receivedAt: stamp,
+          telemetry: {
+            drivers: ((frame.drivers as WireFrame[]) ?? []).map(toTelemetryDriver),
+            stamp: num(frame.stamp),
+          },
+        },
+      }
+
     case 'replay':
       return {
         handled: true,
@@ -378,6 +397,34 @@ export function applyFrame(
 
     default:
       return { state, handled: false }
+  }
+}
+
+function toTelemetryDriver(raw: WireFrame): TelemetryDriver {
+  return {
+    driver: str(raw.driver),
+    expected: raw.expected === true,
+    items: ((raw.items as WireFrame[]) ?? []).map(toTelemetryItem),
+  }
+}
+
+function toTelemetryItem(raw: WireFrame): TelemetryItem {
+  return {
+    name: str(raw.name),
+    driver: str(raw.driver),
+    topic: str(raw.topic),
+    // **null を 0 に潰さない。** 「不明」と「0」は別のこと。
+    value: opt(raw.value),
+    unit: typeof raw.unit === 'string' ? raw.unit : null,
+    widget: str(raw.widget, 'number') as TelemetryItem['widget'],
+    // 不明な level を 'ok' に倒さない。gateway が新しい level を足したときに
+    // 「異常なのに緑」になるのが一番まずい。
+    level: str(raw.level, 'unknown') as TelemetryItem['level'],
+    warn: opt(raw.warn),
+    crit: opt(raw.crit),
+    compare: str(raw.compare, 'none') as TelemetryItem['compare'],
+    description: str(raw.description),
+    age: opt(raw.age),
   }
 }
 

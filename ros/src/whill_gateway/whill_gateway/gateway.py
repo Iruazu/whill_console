@@ -48,6 +48,7 @@ from rosbag2_interfaces.srv import Pause, Resume, SetRate
 from rosgraph_msgs.msg import Clock as ClockMsg
 
 from whill_gateway import protocol
+from whill_gateway.driver_telemetry import DriverTelemetry
 from whill_gateway.obstacles import ObstacleError, ObstacleStore, apply_command
 from whill_gateway.param_bridge import MovingWatch, ParamBridge
 from whill_gateway.replay import ReplayProgress, read_bag_info
@@ -139,6 +140,17 @@ class Gateway(Node):
             image_hz=float(self.get_parameter('image_publish_rate').value),
             max_cells=int(self.get_parameter('costmap_max_cells').value),
         )
+        # ---- ドライバのテレメトリ ------------------------------------------
+        # cr2-base.yaml の telemetry 宣言どおりに購読する。閾値の判定も
+        # gateway 側で済ませ、UI には level だけ渡す。
+        self.driver_telemetry = DriverTelemetry(
+            self, self.emit,
+            base=self.registry.base, robot=self.registry.robot,
+            mode=self.mode, wall_clock=self._wall)
+        self._telemetry_timer = self.create_timer(
+            1.0 / float(self.get_parameter('telemetry_publish_rate').value),
+            self.driver_telemetry.publish, clock=self._wall)
+
         # live パラメータなので、走行中に変えられる。set のたびに反映する。
         self.add_on_set_parameters_callback(self._on_parameters_set)
 
@@ -241,6 +253,15 @@ class Gateway(Node):
                 scan_hz=resolved['scan_publish_rate'],
                 image_hz=resolved['image_publish_rate'],
             )
+
+        for param in params:
+            if param.name == 'telemetry_publish_rate' and float(param.value) > 0:
+                # タイマーの周期はここで差し替える。Telemetry の RateLimiter と
+                # 違って「間引く」のではなく「配信そのもの」の周期なので、
+                # 作り直さないと反映されない。
+                self._telemetry_timer.timer_period_ns = int(
+                    1e9 / float(param.value))
+
         return SetParametersResult(successful=True)
 
     def _now(self) -> float:
@@ -530,6 +551,10 @@ class Gateway(Node):
         # 障害物が見えない** — costmap の全量と同じ話（ADR-0002）。
         if client.wants(protocol.MSG_OBSTACLES):
             client.enqueue(protocol.safe_encode(self._obstacles_frame()))
+        # テレメトリも配る。次の配信周期（既定 0.5 s）を待たせないためだけ
+        # ではなく、**バッテリーが見えないまま操作を始められる時間を作らない**ため。
+        if client.wants(protocol.MSG_TELEMETRY):
+            client.enqueue(protocol.safe_encode(self.driver_telemetry.frame()))
         # 再生が既に終わっている bag に後から繋いだとき、これが無いと
         # 「終了した」ことが分からないまま空の画面を見ることになる。
         if self.replay is not None and client.wants(protocol.MSG_REPLAY):
