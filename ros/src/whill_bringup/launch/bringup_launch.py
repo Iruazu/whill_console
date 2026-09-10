@@ -87,9 +87,13 @@ def _nav2_params(robot_id: str, preset: str, use_sim_time: bool) -> str:
                   for node, values in registry.as_nested().items()}
 
     # use_sim_time は registry の管轄外（モードで決まる実行時の性質）。
-    for block in params.values():
-        if isinstance(block, dict) and isinstance(block.get('ros__parameters'), dict):
-            block['ros__parameters']['use_sim_time'] = use_sim_time
+    # costmap は `local_costmap: local_costmap: ros__parameters:` と二重に
+    # 入れ子になるので、一段しか見ないと costmap だけ use_sim_time が入らない。
+    # mock (false) では既定値と一致して気づかないが、replay (true) で
+    # costmap だけが実時刻を見る壊れ方をする。
+    from whill_params.generate_nav2_params import iter_ros_parameters
+    for block in iter_ros_parameters(params):
+        block['use_sim_time'] = use_sim_time
 
     handle = tempfile.NamedTemporaryFile(
         mode='w', suffix=f'-{robot_id}-nav2.yaml', prefix='whill-', delete=False,

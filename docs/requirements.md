@@ -59,12 +59,18 @@ Phase 0 で追加した判定手段: `whill doctor` は `ros2 topic list` を人
 ### Phase 1 — パラメータ registry
 
 - `config/params.yaml` のスキーマ確定と JSON Schema 検証（**Phase 0 で先行実装済み**）
-- `whill_params`: yaml → `nav2_params.yaml` を生成し、既存 `whill_lab0_ros2` の設定と差分ゼロ
+- `whill_params`: yaml → `nav2_params.yaml` を生成し、既存 `whill_lab0_ros2` の設定と差分ゼロ（**完了**）
 - 各パラメータに `live` / `safety_class` を付与（**Phase 0 で先行実装済み**）
 - `ros2 param set` 経路で Nav2 controller の数値が即時反映されることを mock 構成で確認
 
 **受け入れ**: `generate_nav2_params --check` が既定値のみで差分ゼロ。
 `whill params list --live` が即時反映可能な一覧を出す（後者は Phase 0 で動作済み）。
+
+Phase 1 で判明したこと: Nav2 の costmap は名前空間とノード名が同じため
+`local_costmap: local_costmap: ros__parameters:` と**二重に入れ子**になる。
+一段しか辿らない実装は costmap のキーを黙って書き飛ばし、値比較だけの
+`--check` は「差分なし」と嘘をつく。`--check` は**反映できなかったキーがあれば
+失敗する**ようにしてある。
 
 ### Phase 2 — gateway と stackd
 

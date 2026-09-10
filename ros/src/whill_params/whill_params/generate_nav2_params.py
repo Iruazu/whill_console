@@ -26,16 +26,63 @@ from whill_params import registry as reg
 DEFAULT_TEMPLATE = Path('~/whill_lab0_ros2/src/whill_navigation/config/nav2_params.yaml')
 
 
+def _ros_parameters(root: dict[str, Any], node: str) -> dict[str, Any] | None:
+    """ノード名から `ros__parameters` の辞書を引く。
+
+    Nav2 の costmap は名前空間とノード名が同じため二重に入れ子になる:
+
+        local_costmap:
+          local_costmap:
+            ros__parameters: ...
+
+    一方 controller_server などは一段:
+
+        controller_server:
+          ros__parameters: ...
+
+    両方を扱う。ここを一段しか見ないと costmap 系のキーが黙って書かれず、
+    「差分なし」と表示されるのに実際は既定値が反映されていない、という
+    最悪の嘘をつく（実際に Phase 1 着手時点でそうなっていた）。
+    """
+    node_block = root.get(node)
+    if not isinstance(node_block, dict):
+        return None
+
+    direct = node_block.get('ros__parameters')
+    if isinstance(direct, dict):
+        return direct
+
+    nested = node_block.get(node)
+    if isinstance(nested, dict) and isinstance(nested.get('ros__parameters'), dict):
+        return nested['ros__parameters']
+
+    return None
+
+
+def iter_ros_parameters(root: dict[str, Any]):
+    """テンプレート内の全 `ros__parameters` 辞書を返す（入れ子も拾う）。
+
+    bringup が use_sim_time を流し込むのにも使う。costmap の二重入れ子を
+    見落とすと replay モードで costmap だけ実時刻を見る。
+    """
+    for node_block in root.values():
+        if not isinstance(node_block, dict):
+            continue
+        direct = node_block.get('ros__parameters')
+        if isinstance(direct, dict):
+            yield direct
+        for child in node_block.values():
+            if isinstance(child, dict) and isinstance(child.get('ros__parameters'), dict):
+                yield child['ros__parameters']
+
+
 def _set_nested(root: dict[str, Any], node: str, dotted: str, value: Any) -> bool:
     """Nav2 params の `<node>: ros__parameters: <a>: <b>` へ値を書く。
 
     書けたら True。テンプレートに該当パスが無ければ False（登録ミスの検出用）。
     """
-    node_block = root.get(node)
-    if not isinstance(node_block, dict):
-        return False
-    cursor = node_block.get('ros__parameters')
-    if not isinstance(cursor, dict):
+    cursor = _ros_parameters(root, node)
+    if cursor is None:
         return False
 
     parts = dotted.split('.')
@@ -96,9 +143,18 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     for key in unmapped:
-        print(f'警告: テンプレートに該当パスが無い: {key}', file=sys.stderr)
+        print(f'エラー: テンプレートに該当パスが無い: {key}', file=sys.stderr)
 
     if args.check:
+        # 反映できなかったキーがあるまま「差分なし」と言わない。書かれていない
+        # キーは当然テンプレートと一致するので、値比較だけでは素通りしてしまう。
+        # registry が管理しているつもりの値が実は効いていない、という嘘を
+        # ここで止める。
+        if unmapped:
+            print(f'{len(unmapped)} 件が反映されていない。'
+                  f'registry のキー名かテンプレートの構造を直すこと', file=sys.stderr)
+            return 1
+
         with template_path.open(encoding='utf-8') as handle:
             original = yaml.safe_load(handle)
         generated = yaml.safe_load(text)
