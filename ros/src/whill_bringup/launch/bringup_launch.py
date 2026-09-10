@@ -260,8 +260,11 @@ def _setup(context, *args, **kwargs):
         actions.append(Node(
             package='whill_gateway', executable='gateway', name='whill_gateway',
             output='screen',
+            # bag を渡すのは replay のときだけ。他モードで渡すと、gateway が
+            # 再生していないのに再生位置を出そうとする。
             parameters=[{'robot_id': robot_id, 'mode': mode,
-                         'use_sim_time': use_sim_time}]))
+                         'use_sim_time': use_sim_time,
+                         'bag': str(Path(bag).expanduser()) if mode == 'replay' else ''}]))
 
     return actions
 

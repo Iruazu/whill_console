@@ -44,9 +44,13 @@ from geometry_msgs.msg import Point, Twist
 
 from action_msgs.srv import CancelGoal
 
+from rosbag2_interfaces.srv import Pause, Resume, SetRate
+from rosgraph_msgs.msg import Clock as ClockMsg
+
 from whill_gateway import protocol
 from whill_gateway.obstacles import ObstacleError, ObstacleStore, apply_command
 from whill_gateway.param_bridge import MovingWatch, ParamBridge
+from whill_gateway.replay import ReplayProgress, read_bag_info
 from whill_gateway.safety import ManualControl
 from whill_gateway.server import Client, GatewayServer
 from whill_gateway.telemetry import Telemetry
@@ -59,6 +63,33 @@ STATUS_PERIOD_SEC = 1.0
 TF_SUMMARY_PERIOD_SEC = 2.0
 """tf 要約の配信周期。中身が変わったときだけ実際に流れる。"""
 
+REPLAY_PERIOD_SEC = 0.25
+"""再生位置の配信周期。
+
+秒単位の表示なので 1 Hz でも足りるが、一時停止したときの反応が鈍いと
+「ボタンが効いていない」と読める。小さいフレームなので 4 Hz で流す。
+"""
+
+CLOCK_QOS = QoSProfile(
+    depth=1,
+    reliability=QoSReliabilityPolicy.BEST_EFFORT,
+    durability=QoSDurabilityPolicy.VOLATILE,
+    history=QoSHistoryPolicy.KEEP_LAST,
+)
+"""`/clock` の購読 QoS。
+
+`ros2 bag play --clock` は `rclcpp::ClockQoS`（best-effort）で出す。RELIABLE で
+購読すると**1 通も来ない** — 繋がらないのではなく静かに何も届かない、
+という切り分けにくい壊れ方をする。
+"""
+
+PLAYER_NS = '/rosbag2_player'
+"""`ros2 bag play` が出すサービスの名前空間。
+
+`--clock` で起動したプレイヤは pause / resume / set_rate / seek を持つ。
+本リポが使うのは前 3 つだけ（ADR-0004）。
+"""
+
 
 class Gateway(Node):
 
@@ -67,6 +98,9 @@ class Gateway(Node):
 
         self.declare_parameter('robot_id', 'cr2-01')
         self.declare_parameter('mode', 'mock')
+        # 再生中の bag。metadata.yaml から全体長を読むためだけに要る。
+        # registry には入れない — 個体の設定ではなく、その起動限りの引数。
+        self.declare_parameter('bag', '')
         self.robot_id = self.get_parameter('robot_id').value
         self.mode = self.get_parameter('mode').value
 
@@ -163,6 +197,14 @@ class Gateway(Node):
         self.create_timer(STATUS_PERIOD_SEC, self._publish_status, clock=self._wall)
         self.create_timer(TF_SUMMARY_PERIOD_SEC, self.telemetry.publish_tf_summary,
                           clock=self._wall)
+
+        # ---- 再生位置 ------------------------------------------------------
+        # replay 以外では何も作らない。空のフレームを流すと、UI は
+        # 「再生していない」と「再生位置が 0 秒」を区別できない。
+        self.replay: ReplayProgress | None = None
+        self._player: dict[str, Any] = {}
+        if self.mode == 'replay':
+            self._setup_replay()
 
     # ---- ROS → Web ---------------------------------------------------------
 
@@ -265,6 +307,83 @@ class Gateway(Node):
             'stamp': self.get_clock().now().nanoseconds / 1e9,
         }
 
+    # ---- 再生 ---------------------------------------------------------------
+
+    def _setup_replay(self) -> None:
+        bag = str(self.get_parameter('bag').value or '')
+        info = read_bag_info(bag) if bag else None
+        if info is None:
+            # 進捗が出ないだけで再生自体は成り立つので止めない。ただし
+            # 「なぜ全体長が出ないのか」を後から追えるようログには残す。
+            self.get_logger().warning(
+                f'bag の metadata を読めない (bag={bag!r})。'
+                '経過時間は出るが全体に対する位置は出ない')
+        self.replay = ReplayProgress(info)
+
+        self.create_subscription(ClockMsg, '/clock', self._on_clock, CLOCK_QOS)
+        self._player = {
+            'pause': self.create_client(Pause, f'{PLAYER_NS}/pause'),
+            'resume': self.create_client(Resume, f'{PLAYER_NS}/resume'),
+            'set_rate': self.create_client(SetRate, f'{PLAYER_NS}/set_rate'),
+        }
+        self.create_timer(REPLAY_PERIOD_SEC, self._publish_replay, clock=self._wall)
+
+    def _on_clock(self, msg: ClockMsg) -> None:
+        if self.replay is None:
+            return
+        self.replay.observe(
+            msg.clock.sec + msg.clock.nanosec / 1e9, self._now())
+
+    def _publish_replay(self) -> None:
+        if self.replay is not None:
+            self.emit(self.replay.frame(self._now()))
+
+    def _replay_control(self, message: dict[str, Any]) -> None:
+        """再生の一時停止・再開・速度変更。
+
+        **応答は待たない。** `wait_for_service` は executor と競合して購読
+        コールバックごと止める（K9）。結果は `/clock` の進み方として
+        `replay` フレームに出るので、そちらで確認できる。
+        """
+        if self.replay is None:
+            raise protocol.ProtocolError(
+                f'mode={self.mode} では再生を操作できない')
+
+        action = protocol.require(message, 'action', str)
+        if action == 'seek':
+            # 「まだ作っていない」ではなく「作らないと決めた」。
+            # 区別が付かないと、後から同じ議論を繰り返すことになる。
+            raise protocol.ProtocolError(
+                'シークは実装しない。時刻が巻き戻ると costmap と '
+                '「古さ」の判定が壊れる（ADR-0004）。'
+                '任意の時刻を見たいときは Foxglove を使うこと')
+        if action not in protocol.REPLAY_ACTIONS:
+            raise protocol.ProtocolError(f'未知の replay_control: {action}')
+
+        # **値の検査を先にする。** 到達性より前に見ないと、範囲外の値を
+        # 送ったときに「届かない」と返ってしまい、UI 側のバグが
+        # 再生の終了に化ける。
+        rate = None
+        if action == 'set_rate':
+            rate = float(protocol.require(message, 'rate', (int, float)))
+            if not protocol.MIN_REPLAY_RATE <= rate <= protocol.MAX_REPLAY_RATE:
+                raise protocol.ProtocolError(
+                    f'再生速度は {protocol.MIN_REPLAY_RATE}〜'
+                    f'{protocol.MAX_REPLAY_RATE} 倍の範囲で指定すること'
+                    f'（受信値 {rate}）')
+
+        client = self._player.get(action)
+        if client is None or not client.service_is_ready():
+            raise protocol.ProtocolError(
+                f'{PLAYER_NS}/{action} に届かない（再生が終了している可能性）')
+
+        if rate is not None:
+            client.call_async(SetRate.Request(rate=rate))
+        else:
+            client.call_async(
+                Pause.Request() if action == 'pause' else Resume.Request())
+        self.get_logger().info(f'再生を操作した: {action}')
+
     def _on_cmd_vel(self, msg: Twist) -> None:
         self.moving.observe(msg.linear.x, msg.angular.z, self._now())
 
@@ -354,6 +473,13 @@ class Gateway(Node):
             self.emit_now(self._obstacles_frame())
             return
 
+        if kind == protocol.MSG_REPLAY_CONTROL:
+            self._replay_control(message)
+            # 効いたかどうかは次の replay フレームで分かる（/clock が
+            # 進むか止まるか）。ここで成功を返さないのは、サービスの
+            # 応答を待っていないため — 待つと購読ごと止まる（K9）。
+            return
+
         if kind == protocol.MSG_PRESET_APPLY:
             name = protocol.require(message, 'name', str)
             results = await self.params.apply_preset(name, source='ui')
@@ -404,6 +530,10 @@ class Gateway(Node):
         # 障害物が見えない** — costmap の全量と同じ話（ADR-0002）。
         if client.wants(protocol.MSG_OBSTACLES):
             client.enqueue(protocol.safe_encode(self._obstacles_frame()))
+        # 再生が既に終わっている bag に後から繋いだとき、これが無いと
+        # 「終了した」ことが分からないまま空の画面を見ることになる。
+        if self.replay is not None and client.wants(protocol.MSG_REPLAY):
+            client.enqueue(protocol.safe_encode(self.replay.frame(self._now())))
 
     async def _send_params(self, client: Client) -> None:
         """registry の spec と実ノードの現在値を配る。

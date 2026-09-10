@@ -526,4 +526,87 @@ test.describe('console のスクリーンショット', () => {
     )
     expect(overflow, '横方向にはみ出している').toBeLessThanOrEqual(0)
   })
+
+  test('再生バーは replay モードでのみ出る', async ({ page }, testInfo) => {
+    await openWithToken(page)
+    // mock / real では gateway が replay フレームを送らないので出ない。
+    // 空のバーを常時出すと「再生していない」と「再生位置が 0 秒」を
+    // 画面で区別できなくなる。
+    await expect(page.getByTestId('replaybar')).toHaveCount(0)
+
+    await page.evaluate(() => {
+      ;(window as unknown as {
+        __whillIngest: (f: Record<string, unknown>) => void
+      }).__whillIngest({
+        type: 'replay',
+        bag: '/home/systemlab/whill_platform/bags/2026-07-31-campus',
+        elapsed: 118.4, total: 235.08, rate: 1.0,
+        playing: true, finished: false, stamp: 1,
+      })
+    })
+
+    await expect(page.getByTestId('replaybar')).toBeVisible()
+    await expect(page.getByTestId('replay-state')).toHaveText('再生中')
+    await expect(page.getByTestId('replay-position')).toHaveText('1:58 / 3:55')
+    await expect(page.getByTestId('replay-rate')).toHaveText('1.0x')
+    await expect(page.getByTestId('replay-bag')).toHaveText('2026-07-31-campus')
+    // 進捗が絵としても出ていること。数字だけだと進んでいるか掴みにくい。
+    await expect(page.getByTestId('replay-fill')).toHaveAttribute('style', /width: 50\.\d%/)
+
+    await page.screenshot({
+      path: `${SHOT_DIR}/${testInfo.project.name}-replay.png`,
+      fullPage: true,
+    })
+  })
+
+  test('一時停止と再生終了を画面で区別する', async ({ page }) => {
+    // 止まっている絵が「終わった」のか「その時刻に車体が止まっていた」のか
+    // 分からないのが、この機能を作った理由そのもの。
+    await openWithToken(page)
+    const feed = (frame: Record<string, unknown>) =>
+      page.evaluate(
+        (f) =>
+          (window as unknown as {
+            __whillIngest: (x: Record<string, unknown>) => void
+          }).__whillIngest(f),
+        frame,
+      )
+
+    await feed({
+      type: 'replay', bag: '/bags/x', elapsed: 30, total: 235.08,
+      rate: null, playing: false, finished: false, stamp: 1,
+    })
+    await expect(page.getByTestId('replay-state')).toHaveText('停止中')
+    // 止まっているなら速度は出さない。「停止中 1.0x」は矛盾している。
+    await expect(page.getByTestId('replay-rate')).toHaveText('—')
+    // 再開できる状態なのでボタンは「再開」。
+    await expect(page.getByTestId('replay-toggle')).toHaveText('再開')
+
+    await feed({
+      type: 'replay', bag: '/bags/x', elapsed: 234.9, total: 235.08,
+      rate: null, playing: false, finished: true, stamp: 2,
+    })
+    await expect(page.getByTestId('replay-state')).toHaveText('再生終了')
+    // 終わった再生は再開できない。押せると「効かないボタン」になる。
+    await expect(page.getByTestId('replay-toggle')).toBeDisabled()
+    await expect(page.getByTestId('replay-toggle')).toHaveAttribute(
+      'title', /起動し直す/)
+  })
+
+  test('全体長が不明なら進捗バーを出さない', async ({ page }) => {
+    // 0 % で描くと「先頭に居る」と誤読する。metadata.yaml を読めなかった
+    // ことが画面から分かるようにする。
+    await openWithToken(page)
+    await page.evaluate(() => {
+      ;(window as unknown as {
+        __whillIngest: (f: Record<string, unknown>) => void
+      }).__whillIngest({
+        type: 'replay', bag: null, elapsed: null, total: null,
+        rate: null, playing: false, finished: false, stamp: 1,
+      })
+    })
+    await expect(page.getByTestId('replay-track')).toHaveCount(0)
+    await expect(page.getByTestId('replay-no-total')).toBeVisible()
+    await expect(page.getByTestId('replay-position')).toHaveText('— / —')
+  })
 })

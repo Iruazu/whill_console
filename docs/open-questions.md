@@ -45,6 +45,7 @@
 | K8 | **`SingleThreadedExecutor` を別スレッドで回すと `use_sim_time` のノード時計が進まない**（`rclpy.spin` なら進む）。gateway はこの構成なので、sim 時計に依存した処理が全部止まる。 | gateway の内部タイミング（レート制限・ハートビート監視）は**実時間の時計**で測るようにした。そもそも帯域と安全は実時間で測るべきもの。メッセージの stamp は header から取るので bag の時刻は失われない。 |
 | K9 | **`rclpy` の `wait_for_service` は executor と競合して購読コールバックごと止める。** replay（Nav2 が居ない）で全ノードが未応答のとき、gateway が「起動しているのにテレメトリが 1 通も流れない」状態になった。 | 待たない。`service_is_ready()` が false なら即座に unreachable として扱う。次にクライアントが繋いだときに再試行される。 |
 | K7 | **mock と実機で cmd_vel の配線が 1 段違う。** 実機は `controller_server → /cmd_vel_nav → twist_mux → /cmd_vel → velocity_smoother → /whill/controller/cmd_vel`。mock は nav2_bringup の `navigation_launch.py` をそのまま使うため velocity_smoother が先に入り、`… → velocity_smoother → /cmd_vel → twist_mux → /whill/controller/cmd_vel` になる。影響は「E-stop のゼロが velocity_smoother を通らない」こと（mock は即停止、実機は減速カーブ）。 | E-stop としては mock のほうが厳しいので上位の検証には支障がない。`mode=real` を配線する時点で実機の順序に揃える。設定は `ros/src/whill_bringup/config/twist_mux_mock.yaml` に注記済み。 |
+| K11 | **bag を再生し終えても gateway は残り、次の `whill run` が port 8765 を取れずに落ちる。** gateway が死んでも launch 全体は生き続けるので、「スタックは動いているのにブラウザから何も繋がらない」状態になる。原因はログに出る（`address already in use`）が、上位からは見えない。gateway が残るのは意図どおり（再生が終わったことを画面に出すため — ADR-0004）。 | 当面は前のスタックを止めてから起動する。恒久対応は `whill_bringup` で gateway ノードに `on_exit=Shutdown()` を付け、gateway が死んだら launch ごと落とすこと。Phase 5 で入れる。 |
 | K5 | **`mode=real` と `mode=sim` は未配線。** 呼ぶと明示的に例外で落ちる。 | 黙って何も起動しないより落ちるほうが安全（「実機モードで動いたつもり」を防ぐ）。real は実機復帰後、sim は `sim/` の world 整備後。 |
 
 ## D. 解決済み
