@@ -91,6 +91,9 @@ STREAMS = frozenset({
 # costmap_update が broadcast で捨てられていた。
 _STREAM_OF = {
     MSG_COSTMAP_UPDATE: MSG_COSTMAP,
+    # 変更ログは params パネルに出るもの。params を購読していれば届く。
+    # 独立させると「スライダーは出るのに変更履歴が来ない」構成を作れてしまう。
+    MSG_PARAM_CHANGED: MSG_PARAMS,
 }
 
 

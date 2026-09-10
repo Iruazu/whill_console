@@ -45,6 +45,14 @@ export interface FrameState {
   appliedPreset: string | null
   /** 変更ログ。受理も拒否も残す。新しいものが先頭。 */
   paramChanges: ParamChange[]
+  /** キーごとの「結果が返ってきた回数」。
+   *
+   * 拒否されたとき、値は変わらないのに入力欄には拒否された値が
+   * 残ってしまう（実際は 0.85 なのに 9.9 と表示される）。まさに
+   * 「効いたように見えて効いていない」状態なので、結果が返るたびに
+   * これを進めて UI 側の下書きを捨てさせる。
+   */
+  paramRevision: Record<string, number>
   tf: TfSummary | null
   diagnostics: DiagnosticEntry[]
   /** フレーム種別ごとの最終受信時刻 (ms)。古さの判定に使う。 */
@@ -65,6 +73,7 @@ export const emptyFrameState = (): FrameState => ({
   presets: [],
   appliedPreset: null,
   paramChanges: [],
+  paramRevision: {},
   tf: null,
   diagnostics: [],
   receivedAt: {},
@@ -271,6 +280,10 @@ export function applyFrame(
               )
             : state.params,
           paramChanges: [change, ...state.paramChanges].slice(0, PARAM_CHANGE_LIMIT),
+          paramRevision: {
+            ...state.paramRevision,
+            [key]: (state.paramRevision[key] ?? 0) + 1,
+          },
         },
       }
     }

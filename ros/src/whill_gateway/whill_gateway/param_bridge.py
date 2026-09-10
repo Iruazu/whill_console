@@ -273,7 +273,8 @@ class ParamBridge:
         except RegistryError as exc:
             self._log_change(spec, old, value, source, False, str(exc))
             return {'type': protocol.MSG_PARAM_CHANGED, 'key': key,
-                    'accepted': False, 'reason': str(exc), 'value': old}
+                    'accepted': False, 'reason': str(exc), 'value': old,
+                    'source': source}
 
         if not spec.live:
             # 再起動が要るものは ROS へ送らない。送っても効かないのに
@@ -282,7 +283,7 @@ class ParamBridge:
                              '再起動が必要（live: false）')
             self.registry.values[key] = old
             return {'type': protocol.MSG_PARAM_CHANGED, 'key': key,
-                    'accepted': False, 'value': old,
+                    'accepted': False, 'value': old, 'source': source,
                     'reason': 'このパラメータは再起動が必要（live: false）'}
 
         ros_node = self.registry.ros_node(spec.node)
@@ -298,7 +299,8 @@ class ParamBridge:
             reason = f'{ros_node} へ届かない: {exc}'
             self._log_change(spec, old, value, source, False, reason)
             return {'type': protocol.MSG_PARAM_CHANGED, 'key': key,
-                    'accepted': False, 'reason': reason, 'value': old}
+                    'accepted': False, 'reason': reason, 'value': old,
+                    'source': source}
 
         result = response.results[0] if response.results else None
         if result is None or not result.successful:
@@ -307,11 +309,13 @@ class ParamBridge:
                       else f'{ros_node} が拒否した')
             self._log_change(spec, old, value, source, False, reason)
             return {'type': protocol.MSG_PARAM_CHANGED, 'key': key,
-                    'accepted': False, 'reason': reason, 'value': old}
+                    'accepted': False, 'reason': reason, 'value': old,
+                    'source': source}
 
         self._log_change(spec, old, value, source, True, '')
         return {'type': protocol.MSG_PARAM_CHANGED, 'key': key,
-                'accepted': True, 'value': value, 'ros_node': ros_node}
+                'accepted': True, 'value': value, 'ros_node': ros_node,
+                'source': source}
 
     async def apply_preset(self, name: str, *, source: str) -> list[dict[str, Any]]:
         """preset の overrides をまとめて適用する。

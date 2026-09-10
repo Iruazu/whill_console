@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import { useGateway } from './hooks/useGateway'
 import { useStoreProbe } from './hooks/useStoreProbe'
@@ -15,8 +15,14 @@ import { TopBar } from './panels/TopBar'
  */
 export function App() {
   const [token, setToken] = useState(loadToken)
-  useGateway(token)
+  const client = useGateway(token)
   useStoreProbe()
+
+  // 未接続のときは false を返す。押した感触だけあって何も起きない、を避ける。
+  const send = useCallback(
+    (frame: Record<string, unknown>) => client?.send(frame) ?? false,
+    [client],
+  )
 
   if (!token) {
     return <TokenGate onSubmit={setToken} />
@@ -27,7 +33,7 @@ export function App() {
       <TopBar />
       <div className="layout">
         <Overview2D />
-        <ParamsPanel />
+        <ParamsPanel send={send} />
       </div>
     </div>
   )

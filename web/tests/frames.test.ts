@@ -287,3 +287,41 @@ describe('古さの判定', () => {
     expect(isStale(state.receivedAt, COSTMAP_KINDS, 9100, 5000)).toBe(false)
   })
 })
+
+describe('paramRevision', () => {
+  const withParam = () =>
+    apply(emptyFrameState(), {
+      type: 'params', presets: [], preset: null, unreachable: [], mismatches: [],
+      params: [{
+        key: 'a.b', node: 'a', ros_node: '/a', name: 'b', type: 'double',
+        value: 0.6, default: 0.6, range: { min: 0, max: 1 },
+        unit: 'm', live: true, safety_class: 'none', description: '説明',
+      }],
+    })
+
+  it('拒否でも revision が進む', () => {
+    // 進まないと、拒否された入力が欄に残り続ける（実際は 0.6 なのに
+    // 9.9 と表示される）。実機で踏んだ。
+    const state = apply(withParam(), {
+      type: 'param_changed', key: 'a.b', accepted: false, value: 0.6,
+      reason: '上限を上回る',
+    })
+    expect(state.paramRevision['a.b']).toBe(1)
+    expect(state.params[0].value).toBe(0.6)
+  })
+
+  it('受理でも revision が進む', () => {
+    const state = apply(withParam(), {
+      type: 'param_changed', key: 'a.b', accepted: true, value: 0.8,
+    })
+    expect(state.paramRevision['a.b']).toBe(1)
+    expect(state.params[0].value).toBe(0.8)
+  })
+
+  it('キーごとに独立して数える', () => {
+    let state = apply(withParam(), { type: 'param_changed', key: 'a.b', accepted: true, value: 1 })
+    state = apply(state, { type: 'param_changed', key: 'c.d', accepted: true, value: 1 })
+    expect(state.paramRevision['a.b']).toBe(1)
+    expect(state.paramRevision['c.d']).toBe(1)
+  })
+})
