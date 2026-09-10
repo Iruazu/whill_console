@@ -257,20 +257,17 @@ class Gateway(Node):
                 raise protocol.ProtocolError('param_set: value が無い')
             result = await self.params.set_value(
                 key, message['value'], source='slider')
-            client.enqueue(protocol.safe_encode(result))
-            if result['accepted']:
-                # 他のクライアントの画面も追随させる。1 人が変えた値が
-                # 別の画面では古いまま、という状態を作らない。
-                self.emit_now(result)
+            # **受理も拒否も全クライアントへ配る。** 1 人が変えた値が別の画面で
+            # 古いままにならないようにするのと、「誰かが走行中に速度を上げよう
+            # として拒否された」ことが全員に見えるようにするため。
+            self.emit_now(result)
             return
 
         if kind == protocol.MSG_PRESET_APPLY:
             name = protocol.require(message, 'name', str)
             results = await self.params.apply_preset(name, source='ui')
             for result in results:
-                client.enqueue(protocol.safe_encode(result))
-                if result['accepted']:
-                    self.emit_now(result)
+                self.emit_now(result)
             return
 
         raise protocol.ProtocolError(f'{kind} はまだ実装していない')

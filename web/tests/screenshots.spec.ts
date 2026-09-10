@@ -169,6 +169,165 @@ test.describe('console のスクリーンショット', () => {
     expect(await snapshot()).not.toBe(before)
   })
 
+  test('params が registry から自動生成される', async ({ page }, testInfo) => {
+    await openWithToken(page)
+    await expect(page.getByText('registry 未受信。')).toBeVisible()
+
+    await page.evaluate(() => {
+      const ingest = (window as unknown as {
+        __whillIngest: (frame: Record<string, unknown>) => void
+      }).__whillIngest
+      ingest({
+        type: 'params',
+        presets: ['cautious', 'campus-cruise'],
+        preset: null,
+        unreachable: ['/behavior_server'],
+        mismatches: [{ key: 'a.b', registry: 0.3, live: 0.5 }],
+        params: [
+          {
+            key: 'controller_server.FollowPath.desired_linear_vel',
+            node: 'controller_server', ros_node: '/controller_server',
+            name: 'FollowPath.desired_linear_vel', type: 'double',
+            value: 0.3, default: 0.3,
+            range: { min: 0.05, max: 1.0, step: 0.01 },
+            unit: 'm/s', live: true, safety_class: 'locked_while_moving',
+            description: '着座した人を乗せて 0.3 m/s が安全な巡航。',
+          },
+          {
+            key: 'local_costmap.robot_radius',
+            node: 'local_costmap', ros_node: '/local_costmap/local_costmap',
+            name: 'robot_radius', type: 'double', value: 0.45, default: 0.45,
+            range: { min: 0.2, max: 0.9, step: 0.01 },
+            unit: 'm', live: false, safety_class: 'locked_while_moving',
+            description: '円 footprint 近似。',
+          },
+          {
+            key: 'velocity_smoother.max_accel',
+            node: 'velocity_smoother', ros_node: '/velocity_smoother',
+            name: 'max_accel', type: 'double_array',
+            value: [0.3, 0.0, 1.0], default: [0.3, 0.0, 1.0], range: null,
+            elements: [
+              { label: 'ax', range: { min: 0.05, max: 1.0, step: 0.05 } },
+              { label: 'ay', range: { min: 0.0, max: 0.0, step: 0.05 } },
+              { label: 'ayaw', range: { min: 0.2, max: 3.0, step: 0.1 } },
+            ],
+            unit: '[m/s^2, m/s^2, rad/s^2]', live: true,
+            safety_class: 'locked_while_moving',
+            description: '実機の乗り心地を決める最重要値。',
+          },
+          {
+            key: 'controller_server.FollowPath.use_rotate_to_heading',
+            node: 'controller_server', ros_node: '/controller_server',
+            name: 'FollowPath.use_rotate_to_heading', type: 'bool',
+            value: true, default: true, range: null, unit: null,
+            live: false, safety_class: 'caution',
+            description: '経路始端でその場旋回して向きを合わせる。',
+          },
+        ],
+      })
+      ingest({
+        type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_active: false,
+        estop: false, clients: 1, preset: null, stamp: 1,
+      })
+    })
+
+    // ノード別にまとまり、実 ROS ノード名も出ること
+    await expect(page.getByText('/local_costmap/local_costmap')).toBeVisible()
+
+    // live / restart の区分
+    await expect(
+      page.getByTestId('param-local_costmap.robot_radius').getByText('restart'),
+    ).toBeVisible()
+
+    // live: false は操作できない（送っても gateway が拒否する）
+    await expect(page.getByTestId('input-local_costmap.robot_radius')).toBeDisabled()
+
+    // 配列は軸ごとにスライダー。差動二輪の vy は動かせない
+    await expect(page.getByTestId('input-velocity_smoother.max_accel-ax')).toBeEnabled()
+    await expect(page.getByTestId('input-velocity_smoother.max_accel-ay')).toBeDisabled()
+    await expect(page.getByTestId('input-velocity_smoother.max_accel-ayaw')).toBeEnabled()
+
+    // registry とのずれ・応答しないノードを隠さない
+    await expect(page.getByTestId('mismatches')).toBeVisible()
+    await expect(page.getByTestId('unreachable')).toBeVisible()
+
+    await page.screenshot({
+      path: `${SHOT_DIR}/${testInfo.project.name}-params.png`,
+      fullPage: true,
+    })
+  })
+
+  test('走行中は locked_while_moving が操作できない', async ({ page }) => {
+    await openWithToken(page)
+    await page.evaluate(() => {
+      const ingest = (window as unknown as {
+        __whillIngest: (frame: Record<string, unknown>) => void
+      }).__whillIngest
+      ingest({
+        type: 'params', presets: [], preset: null, unreachable: [], mismatches: [],
+        params: [{
+          key: 'controller_server.FollowPath.desired_linear_vel',
+          node: 'controller_server', ros_node: '/controller_server',
+          name: 'FollowPath.desired_linear_vel', type: 'double',
+          value: 0.3, default: 0.3, range: { min: 0.05, max: 1.0, step: 0.01 },
+          unit: 'm/s', live: true, safety_class: 'locked_while_moving',
+          description: '説明',
+        }],
+      })
+      ingest({
+        type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_active: false,
+        estop: false, clients: 1, preset: null, stamp: 1,
+      })
+    })
+
+    const input = page.getByTestId('input-controller_server.FollowPath.desired_linear_vel')
+    await expect(input).toBeEnabled()
+
+    // 走り出したら無効化する（最終判断は gateway 側でもする）
+    await page.evaluate(() => {
+      ;(window as unknown as {
+        __whillIngest: (frame: Record<string, unknown>) => void
+      }).__whillIngest({
+        type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_active: true,
+        estop: false, clients: 1, preset: null, stamp: 2,
+      })
+    })
+    await expect(input).toBeDisabled()
+    await expect(page.getByText('走行中は変更できない（locked_while_moving）')).toBeVisible()
+  })
+
+  test('拒否の理由が変更ログに残る', async ({ page }) => {
+    // 黙って値が戻ると「動かしたのに変わらない」になり、範囲外なのか
+    // 走行中なのか再起動が要るのか区別できない。
+    await openWithToken(page)
+    await page.evaluate(() => {
+      const ingest = (window as unknown as {
+        __whillIngest: (frame: Record<string, unknown>) => void
+      }).__whillIngest
+      ingest({
+        type: 'params', presets: [], preset: null, unreachable: [], mismatches: [],
+        params: [{
+          key: 'controller_server.FollowPath.min_lookahead_dist',
+          node: 'controller_server', ros_node: '/controller_server',
+          name: 'FollowPath.min_lookahead_dist', type: 'double',
+          value: 0.6, default: 0.6, range: { min: 0.2, max: 1.5, step: 0.05 },
+          unit: 'm', live: true, safety_class: 'caution', description: '説明',
+        }],
+      })
+      ingest({
+        type: 'param_changed',
+        key: 'controller_server.FollowPath.min_lookahead_dist',
+        accepted: false, value: 0.6, source: 'slider',
+        reason: '99.0 が上限 1.5 を上回る',
+      })
+    })
+
+    const log = page.getByTestId('change-log')
+    await expect(log).toBeVisible()
+    await expect(log).toContainText('NG')
+    await expect(log).toContainText('99.0 が上限 1.5 を上回る')
+  })
+
   test('768px で ops 相当の幅が横スクロールしない', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 })
     await openWithToken(page)
