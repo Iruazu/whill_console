@@ -74,6 +74,13 @@ whill params show controller_server.FollowPath.min_lookahead_dist
 # config/ のスキーマ検証
 whill params validate
 
+# registry から生成した Nav2 params が既存スタックと一致するか
+# (Phase 1 の受け入れ条件。差分ゼロなら exit 0)
+ros2 run whill_params generate_nav2_params --robot cr2-01 --check
+
+# preset を当てたものを書き出して中身を見る
+ros2 run whill_params generate_nav2_params --robot cr2-01 --preset cautious -o /tmp/nav2.yaml
+
 # 起動せずに「出るはずのトピック」を見る
 whill topics --mode mock
 ```
@@ -98,6 +105,7 @@ whill topics --mode mock
 | `ros2 topic hz /scan` が何も出さない | `/scan` は best-effort QoS。humble の `topic hz` は自動判定しない。`ros2 topic echo --once` を使う。 |
 | pytest が `No module named 'lark'` で落ちる | ROS 製 pytest プラグインの自動 load。`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` を付ける（`scripts/test.sh` は付けている）。 |
 | launch が残骸プロセスを残す | `pkill -INT` は launch の子に確実に伝播しない。`pkill -9 -f whill_mock_drivers` のように子を名指しで落とす。 |
+| `generate_nav2_params --check` が「N 件が反映されていない」で落ちる | registry のキー名がテンプレートの構造と合っていない。Nav2 の costmap は `local_costmap: local_costmap: ros__parameters:` と二重に入れ子になる点に注意。 |
 | `mode=real` / `mode=sim` で例外が出る | 未配線。仕様どおり（黙って起動しないより落とす）。`docs/open-questions.md` K5。 |
 
 ## bag の変換
