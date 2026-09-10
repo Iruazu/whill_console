@@ -87,7 +87,10 @@ Phase 1 で判明したこと: Nav2 の costmap は名前空間とノード名�
   に publish → MCAP 記録。**宛先ノード名は `registry.ros_node()` を通すこと** —
   costmap は yaml のキーと ROS のノード名が違う）、仮想障害物 CRUD、
   手動速度指令（ハートビート付き）、E-stop
-- 認証: 固定トークン、LAN 限定バインド
+- 認証: 固定トークン、LAN 限定バインド。**トークン未設定では起動しない**
+  （無認証で待ち受ける状態を作らない）
+- 実装は aiohttp。`websockets` ライブラリは Ubuntu 22.04 の apt 版（9.1）が
+  Python 3.10 で壊れているため使わない（ADR-0003）
 
 `whill_stackd`（uv, systemd ユニット）
 - API: 個体選択 → モード選択 → 起動 / 停止 / 再起動 / ログ tail（WebSocket）

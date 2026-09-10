@@ -124,9 +124,11 @@ jobs:
             python3-colcon-common-extensions python3-pytest python3-yaml
           rm -rf /var/lib/apt/lists/*
 
-      # tests/ros に必要なのは whill_params だけ。mock ドライバは opencv 等を
-      # 引くので、CI では建てない（実行時の検証は mock 構成のローカル実行で行う）。
-      - name: whill_params を建てる
+      # tests/ros に必要なのは whill_params と whill_gateway だけ。mock ドライバは
+      # opencv 等を引くので CI では建てない（実行時の検証は mock 構成の
+      # ローカル実行で行う）。gateway の protocol / server は aiohttp を
+      # serve() の中でしか import しないので、テストだけなら aiohttp も不要。
+      - name: whill_params / whill_gateway を建てる
         shell: bash
         run: |
           set -eo pipefail
@@ -134,7 +136,8 @@ jobs:
           source /opt/ros/humble/setup.bash
           set -u
           cd ros
-          colcon build --symlink-install --packages-select whill_params
+          colcon build --symlink-install \
+            --packages-select whill_params whill_gateway
 
       # 既存スタック (whill_lab0_ros2) の nav2_params.yaml は CI に無いので、
       # それに依存するテストは skip される。skip されたことが見えるように

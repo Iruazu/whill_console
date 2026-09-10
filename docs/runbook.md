@@ -10,8 +10,11 @@ curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR="$HOME/.local/bin" s
 # Node 22 は tarball を ~/.local/opt/node へ展開し、corepack で pnpm を有効化する
 #   (apt の nodejs 12 は Vite に古すぎる)
 
-# MCAP 再生に必要
-sudo apt-get install -y ros-humble-rosbag2-storage-mcap
+# MCAP 再生と gateway に必要
+sudo apt-get install -y ros-humble-rosbag2-storage-mcap python3-aiohttp
+
+# python3-websockets は入れないこと。apt の 9.1 は Python 3.10 で壊れており、
+# 「起動ログは正常なのに誰も繋がらない」状態になる (ADR-0003)
 
 cd ~/whill_platform
 source scripts/env.sh
@@ -35,6 +38,18 @@ source ~/whill_platform/scripts/env.sh
 これが `WHILL_PLATFORM_CONFIG` / `RMW_IMPLEMENTATION` / `CYCLONEDDS_URI` を設定し、
 ROS → 既存スタック → 本リポの順に source する。**順序を変えないこと**
 （既存リポの install に残る旧 `whill_bringup` が本リポのものを隠す）。
+
+## gateway のトークン
+
+gateway は **`WHILL_GATEWAY_TOKEN` が無いと起動しない**（無認証で待ち受ける
+状態を作らないため）。8 文字以上。
+
+```bash
+export WHILL_GATEWAY_TOKEN=$(openssl rand -hex 16)
+```
+
+**このトークンをリポジトリに書かないこと。** `docs/` に資格情報を置かない規約。
+研究室で共有するなら別の経路で渡す。
 
 ## 起動
 
@@ -131,6 +146,9 @@ skip の理由がログに出る（全部 skip されて緑、を見逃さない
 | `whill params probe` が "Node not found" と言う | registry のノード名と ROS のノード名が違う。`config/params.yaml` の `node_aliases` に実ノード名を書く（costmap は `/local_costmap/local_costmap`）。 |
 | costmap を subscribe しているのに絵が固まったまま | Nav2 は全量を latched で 1 回しか出さない。`/…/costmap_updates` も受けること。ADR-0002 参照。 |
 | `generate_nav2_params --check` が「N 件が反映されていない」で落ちる | registry のキー名がテンプレートの構造と合っていない。Nav2 の costmap は `local_costmap: local_costmap: ros__parameters:` と二重に入れ子になる点に注意。 |
+| gateway が `WHILL_GATEWAY_TOKEN が未設定` で落ちる | 仕様どおり。無認証では起動しない。 |
+| gateway は起動しているのにブラウザから繋がらない | `python3-websockets` が入っていないか確認する。入っていると壊れる（ADR-0003）。`python3-aiohttp` を使うこと。 |
+| gateway が `address already in use` で落ちる | 前回のプロセスが残っている。`ss -ltnp \| grep 8765` で PID を見て落とす。 |
 | `mode=real` / `mode=sim` で例外が出る | 未配線。仕様どおり（黙って起動しないより落とす）。`docs/open-questions.md` K5。 |
 
 ## bag の変換
