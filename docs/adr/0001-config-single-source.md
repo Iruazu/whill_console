@@ -57,6 +57,34 @@ ROS ノードは `whill_params.descriptors.declare_from_registry` を通して�
   ament の share に複製したものを見る。share を最後にするのは、リポジトリを
   編集したのに古い値が読まれる事故を避けるため。
 
+## 追記（Phase 4）: 構造は registry に載せない
+
+仮想障害物の層を足すとき、costmap の `plugins` をどう扱うかで迷った。
+
+`plugins` は**構造**であって「人が触る値」ではない。registry に載せると、
+Nav2 の層構成の全部を registry で二重管理することになる。かといって
+テンプレート（`whill_lab0_ros2` の `nav2_params.yaml`）は他リポなので編集できない。
+
+**registry が持つのは on/off の bool だけにし、どこに挿すかは生成側が決める**
+という形にした:
+
+```yaml
+# config/params.yaml
+- node: global_costmap
+  name: virtual_obstacles_enabled
+  type: bool
+  live: false          # 層の追加は構造の変更なので再起動が要る
+```
+
+生成側（`generate_nav2_params._insert_virtual_obstacles`）が `plugins` の
+`inflation_layer` の直前に挿し、層のパラメータ塊を作る。挿す位置に意味がある
+（後ろだと膨張がかからず、車体が入れない隙間を通る経路が出る）ので、
+これは人が毎回指定するものではなく、コードで保証すべきこと。
+
+この結果、Phase 1 の「既定値のみで差分ゼロ」は**層を切った状態**で担保する
+ことになった。層の追加は意図した差分で、それ以外の変更が紛れ込んでいない
+ことを `test_the_only_difference_is_the_virtual_obstacles_layer` が見る。
+
 ## 検討して捨てた案
 
 - **ROS パラメータだけで完結させる**: ノードが起動していないと読めない。

@@ -1,0 +1,11 @@
+<class_libraries>
+  <library path="whill_costmap_plugins">
+    <class type="whill_costmap_plugins::VirtualObstaclesLayer"
+           base_class_type="nav2_costmap_2d::Layer">
+      <description>
+        UI で置いた仮想障害物を costmap に注入する。実機を走らせずに
+        「この配置で経路がどう変わるか」を試すための層。
+      </description>
+    </class>
+  </library>
+</class_libraries>

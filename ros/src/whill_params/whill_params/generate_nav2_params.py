@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import copy
 import difflib
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -97,17 +98,70 @@ def _set_nested(root: dict[str, Any], node: str, dotted: str, value: Any) -> boo
     return True
 
 
-def render(robot_id: str, template_path: Path, preset: str | None = None) -> tuple[str, list[str]]:
-    """生成後の yaml 文字列と、テンプレートに反映できなかったキーを返す。"""
+VIRTUAL_OBSTACLES_PLUGIN = 'whill_virtual_obstacles'
+"""仮想障害物層の plugin 名。costmap の `plugins` に足す名前。"""
+
+# registry が持たない構造上のキー。値ではなく「層を足すかどうか」なので、
+# テンプレートに書き込むのではなく生成側で組み立てる。
+_STRUCTURAL_KEYS = {'virtual_obstacles_enabled'}
+
+
+def _insert_virtual_obstacles(params: dict[str, Any], node: str) -> None:
+    """costmap の plugins に仮想障害物層を足し、そのパラメータ塊を作る。
+
+    plugins の並びは構造であって「人が触る値」ではないので registry には
+    載せない（ADR-0001）。registry が持つのは on/off だけで、どこに挿すかは
+    ここが決める。
+
+    **`inflation_layer` より前に挿す。** 後ろだと膨張がかからず、車体が
+    入れない隙間を通る経路が出る。
+    """
+    block = _ros_parameters(params, node)
+    if block is None:
+        return
+
+    plugins = block.get('plugins')
+    if not isinstance(plugins, list):
+        return
+    if VIRTUAL_OBSTACLES_PLUGIN in plugins:
+        return
+
+    if 'inflation_layer' in plugins:
+        plugins.insert(plugins.index('inflation_layer'), VIRTUAL_OBSTACLES_PLUGIN)
+    else:
+        plugins.append(VIRTUAL_OBSTACLES_PLUGIN)
+
+    block[VIRTUAL_OBSTACLES_PLUGIN] = {
+        'plugin': 'whill_costmap_plugins::VirtualObstaclesLayer',
+        'enabled': True,
+        'topic': '/whill/virtual_obstacles',
+        'max_radius': 5.0,
+    }
+
+
+def render(robot_id: str, template_path: Path, preset: str | None = None,
+           overrides: dict[str, Any] | None = None) -> tuple[str, list[str]]:
+    """生成後の yaml 文字列と、テンプレートに反映できなかったキーを返す。
+
+    `overrides` は registry の値を一時的に差し替える。preset を作るほどでは
+    ない一回限りの確認（「この層を切ったら差分ゼロに戻るか」等）に使う。
+    """
     with template_path.open(encoding='utf-8') as handle:
         template = yaml.safe_load(handle)
 
     registry = reg.load(robot_id, preset=preset)
+    for key, value in (overrides or {}).items():
+        registry.set_value(key, value)
     unmapped: list[str] = []
     for key, value in registry.values.items():
         node, _, dotted = key.partition('.')
         # gateway 等 Nav2 の管轄外ノードはテンプレートに存在しなくて当然
         if node not in template:
+            continue
+        if dotted in _STRUCTURAL_KEYS:
+            # 値ではなく構造。plugins の組み立てで扱う。
+            if dotted == 'virtual_obstacles_enabled' and value:
+                _insert_virtual_obstacles(template, node)
             continue
         if not _set_nested(template, node, dotted, value):
             unmapped.append(key)
@@ -129,7 +183,20 @@ def main(argv: list[str] | None = None) -> int:
                         help='出力先。省略時は標準出力')
     parser.add_argument('--check', action='store_true',
                         help='書き出さず、テンプレートとの意味的な差分だけ報告する')
+    parser.add_argument('--set', action='append', default=[], metavar='KEY=VALUE',
+                        help='registry の値を一時的に差し替える（複数可）')
     args = parser.parse_args(argv)
+
+    overrides: dict[str, Any] = {}
+    for entry in args.set:
+        if '=' not in entry:
+            print(f'--set は KEY=VALUE の形で指定すること: {entry}', file=sys.stderr)
+            return 2
+        key, _, raw = entry.partition('=')
+        try:
+            overrides[key] = json.loads(raw)
+        except json.JSONDecodeError:
+            overrides[key] = raw
 
     template_path = args.template.expanduser()
     if not template_path.is_file():
@@ -137,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        text, unmapped = render(args.robot, template_path, args.preset)
+        text, unmapped = render(args.robot, template_path, args.preset, overrides)
     except reg.RegistryError as exc:
         print(f'registry エラー: {exc}', file=sys.stderr)
         return 2

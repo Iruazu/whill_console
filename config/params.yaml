@@ -347,6 +347,32 @@ params:
       gateway が俯瞰図に流す元レート。上げると Web 側の帯域が増えるので、
       UI のなめらかさが欲しいときは gateway の差分送信を調整するほうが先。
 
+  - node: local_costmap
+    name: virtual_obstacles_enabled
+    type: bool
+    default: true
+    range: null
+    unit: null
+    live: false
+    safety_class: caution
+    description: >-
+      UI で置いた仮想障害物を local costmap に入れるか。局所回避に効く。
+      層の追加は構造の変更なので再起動が要る（live: false）。切ると
+      「置いたのに避けない」ことになるので、切るときは意識して切ること。
+
+  - node: global_costmap
+    name: virtual_obstacles_enabled
+    type: bool
+    default: true
+    range: null
+    unit: null
+    live: false
+    safety_class: caution
+    description: >-
+      UI で置いた仮想障害物を global costmap に入れるか。**経路が迂回するのは
+      こちら**（経路計画は global planner の仕事）。Phase 4 の受け入れ条件は
+      これが true であることが前提。
+
   - node: global_costmap
     name: inflation_layer.inflation_radius
     type: double

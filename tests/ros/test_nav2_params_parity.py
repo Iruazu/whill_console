@@ -83,13 +83,81 @@ def test_every_registry_key_maps_into_the_template():
     assert unmapped == [], f'テンプレートに書き込めないキー: {unmapped}'
 
 
+# Phase 4 で仮想障害物の層を足した。**これは意図した差分**なので、
+# 「差分ゼロ」の担保はその層を切った状態で行う。切って一致しなければ、
+# 層の追加とは関係のない退行が入っているということ。
+NO_VIRTUAL_OBSTACLES = {
+    'local_costmap.virtual_obstacles_enabled': False,
+    'global_costmap.virtual_obstacles_enabled': False,
+}
+
+
 @requires_template
 def test_defaults_reproduce_the_template_exactly():
-    """既定値のみなら生成結果がテンプレートと意味的に一致すること。"""
-    text, _ = render('cr2-01', TEMPLATE)
+    """仮想障害物の層を切れば、生成結果がテンプレートと意味的に一致すること。
+
+    Phase 1 の「差分ゼロ」の担保。層の追加以外の変更が紛れ込んでいないことを
+    見ている。ここが割れたら、実走チューニングを黙って書き換えている。
+    """
+    text, _ = render('cr2-01', TEMPLATE, overrides=NO_VIRTUAL_OBSTACLES)
     generated = yaml.safe_load(text)
     original = yaml.safe_load(TEMPLATE.read_text(encoding='utf-8'))
     assert generated == original
+
+
+@requires_template
+def test_virtual_obstacles_layer_is_inserted_before_inflation():
+    """**inflation_layer より前に挿すこと。**
+
+    後ろだと膨張がかからず、車体が入れない隙間を通る経路が出る。
+    """
+    text, _ = render('cr2-01', TEMPLATE)
+    generated = yaml.safe_load(text)
+    for node in ('local_costmap', 'global_costmap'):
+        plugins = _ros_parameters(generated, node)['plugins']
+        assert 'whill_virtual_obstacles' in plugins, f'{node} に層が入っていない'
+        assert plugins.index('whill_virtual_obstacles') < plugins.index('inflation_layer')
+
+
+@requires_template
+def test_virtual_obstacles_layer_has_its_parameters():
+    text, _ = render('cr2-01', TEMPLATE)
+    block = _ros_parameters(yaml.safe_load(text), 'global_costmap')
+    layer = block['whill_virtual_obstacles']
+    assert layer['plugin'] == 'whill_costmap_plugins::VirtualObstaclesLayer'
+    assert layer['topic'] == '/whill/virtual_obstacles'
+    assert layer['max_radius'] > 0
+
+
+@requires_template
+def test_disabling_virtual_obstacles_removes_the_plugin():
+    """切ったら層ごと消えること。enabled: false を残すのではなく plugins から外す。
+
+    残すと「切ったつもりだが層は生きている」状態になりうる。
+    """
+    text, _ = render('cr2-01', TEMPLATE, overrides=NO_VIRTUAL_OBSTACLES)
+    generated = yaml.safe_load(text)
+    for node in ('local_costmap', 'global_costmap'):
+        plugins = _ros_parameters(generated, node)['plugins']
+        assert 'whill_virtual_obstacles' not in plugins
+
+
+@requires_template
+def test_the_only_difference_is_the_virtual_obstacles_layer():
+    """層の追加**だけ**が差分であること。
+
+    ついでに他の値まで変わっていないかを見る。plugins と層の設定を
+    取り除いたら一致するはず。
+    """
+    with_layer = yaml.safe_load(render('cr2-01', TEMPLATE)[0])
+    original = yaml.safe_load(TEMPLATE.read_text(encoding='utf-8'))
+
+    for node in ('local_costmap', 'global_costmap'):
+        block = _ros_parameters(with_layer, node)
+        block['plugins'] = [p for p in block['plugins'] if p != 'whill_virtual_obstacles']
+        block.pop('whill_virtual_obstacles', None)
+
+    assert with_layer == original
 
 
 @requires_template
@@ -121,8 +189,12 @@ def test_preset_changes_produce_a_diff():
 
 @requires_template
 def test_non_registry_keys_are_left_untouched():
-    """registry が管理していない定型（plugin 名、BT の xml パス）を壊さないこと。"""
-    text, _ = render('cr2-01', TEMPLATE)
+    """registry が管理していない定型（BT の xml パス、格子の大きさ）を壊さないこと。
+
+    `plugins` は Phase 4 で意図的に足しているので、ここでは見ない
+    （見るのは test_the_only_difference_is_the_virtual_obstacles_layer）。
+    """
+    text, _ = render('cr2-01', TEMPLATE, overrides=NO_VIRTUAL_OBSTACLES)
     generated = yaml.safe_load(text)
     original = yaml.safe_load(TEMPLATE.read_text(encoding='utf-8'))
 
