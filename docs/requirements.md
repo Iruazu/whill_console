@@ -61,10 +61,14 @@ Phase 0 で追加した判定手段: `whill doctor` は `ros2 topic list` を人
 - `config/params.yaml` のスキーマ確定と JSON Schema 検証（**Phase 0 で先行実装済み**）
 - `whill_params`: yaml → `nav2_params.yaml` を生成し、既存 `whill_lab0_ros2` の設定と差分ゼロ（**完了**）
 - 各パラメータに `live` / `safety_class` を付与（**Phase 0 で先行実装済み**）
-- `ros2 param set` 経路で Nav2 controller の数値が即時反映されることを mock 構成で確認
+- `ros2 param set` 経路で Nav2 controller の数値が即時反映されることを mock 構成で確認（**完了**）
 
 **受け入れ**: `generate_nav2_params --check` が既定値のみで差分ゼロ。
 `whill params list --live` が即時反映可能な一覧を出す（後者は Phase 0 で動作済み）。
+
+`whill params probe` を追加した。起動中のスタックに対して live パラメータを
+実際に `set` → `get` → 復元し、`live: true` が実態と合っているかを機械判定する。
+実測（2026-09-10, mock 構成）で **21 件すべて即時反映**を確認済み。
 
 Phase 1 で判明したこと: Nav2 の costmap は名前空間とノード名が同じため
 `local_costmap: local_costmap: ros__parameters:` と**二重に入れ子**になる。
@@ -75,9 +79,13 @@ Phase 1 で判明したこと: Nav2 の costmap は名前空間とノード名�
 ### Phase 2 — gateway と stackd
 
 `whill_gateway`（rclpy, WebSocket, JSON + binary）
-- 配信: costmap（RLE）、path、pose、tf tree 要約、診断、圧縮画像（レート制限）、モード状態機械
+- 配信: costmap（RLE。**全量 `/…/costmap` と部分更新 `/…/costmap_updates` の両方**を
+  受けること。全量は初回と格子張り替え時しか来ない — ADR-0002 参照）、path、pose、
+  tf tree 要約、診断、圧縮画像（レート制限）、モード状態機械
 - 受信: param set/get（registry 経由で `safety_class` を検査、変更ログを `/whill/param_changes`
-  に publish → MCAP 記録）、仮想障害物 CRUD、手動速度指令（ハートビート付き）、E-stop
+  に publish → MCAP 記録。**宛先ノード名は `registry.ros_node()` を通すこと** —
+  costmap は yaml のキーと ROS のノード名が違う）、仮想障害物 CRUD、
+  手動速度指令（ハートビート付き）、E-stop
 - 認証: 固定トークン、LAN 限定バインド
 
 `whill_stackd`（uv, systemd ユニット）
