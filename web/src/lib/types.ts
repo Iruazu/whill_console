@@ -97,6 +97,19 @@ export interface ScanFrame {
   stamp: number
 }
 
+/** UI で置いた仮想障害物。
+ *
+ * `frameId` は `map` 固定（gateway が他を拒否する）。曖昧にすると
+ * 「どの座標系で置いたのか分からない障害物」ができる。
+ */
+export interface VirtualObstacle {
+  id: string
+  frameId: string
+  x: number
+  y: number
+  radius: number
+}
+
 export interface PathFrame {
   frameId: string
   points: { x: number; y: number }[]

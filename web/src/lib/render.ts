@@ -1,7 +1,13 @@
 import { cellColor } from './rle'
 import { scanToWorld, worldToCanvas } from './transform'
 import type { ViewState, Viewport } from './transform'
-import type { CostmapState, PathFrame, PoseFrame, ScanFrame } from './types'
+import type {
+  CostmapState,
+  PathFrame,
+  PoseFrame,
+  ScanFrame,
+  VirtualObstacle,
+} from './types'
 
 /** 俯瞰図の描画。
  *
@@ -35,6 +41,8 @@ export interface Scene {
   pose: PoseFrame | null
   path: PathFrame | null
   scan: ScanFrame | null
+  /** UI で置いた仮想障害物。**点線円で描く。** */
+  obstacles?: VirtualObstacle[]
   /** costmap が古い（更新が途絶えている）。薄く描いて区別する。 */
   costmapStale?: boolean
 }
@@ -51,6 +59,12 @@ const COLOR_PATH = '#5aa9e0'
 const COLOR_SCAN = '#e0b64a'
 const COLOR_ROBOT = '#4ec9a0'
 const COLOR_GRID = '#1c2027'
+const COLOR_VIRTUAL = '#d07ce0'
+/** 仮想障害物の色。costmap の赤（実障害物）とも LiDAR の橙とも変える。
+ *
+ * 「センサが見ているもの」と「人が置いたもの」を取り違えると、
+ * 実際には無い障害物を避けて走っている、という誤解が生まれる。
+ */
 
 export function renderScene(
   ctx: CanvasRenderingContext2D,
@@ -66,6 +80,9 @@ export function renderScene(
   if (scene.costmap && options.costmapImage) {
     drawCostmap(ctx, scene.costmap, options.costmapImage, view, viewport,
                 scene.costmapStale === true)
+  }
+  if (scene.obstacles?.length) {
+    drawVirtualObstacles(ctx, scene.obstacles, view, viewport)
   }
   if (scene.path) drawPath(ctx, scene.path, view, viewport)
   if (scene.scan) drawScan(ctx, scene.scan, scene.pose, view, viewport)
@@ -133,6 +150,38 @@ function drawCostmap(
   // 拡大時にセルが滲むと「どこが障害物か」が曖昧になる
   ctx.imageSmoothingEnabled = false
   ctx.drawImage(buffer, 0, 0)
+  ctx.restore()
+}
+
+/** 仮想障害物を点線円で描く。
+ *
+ * **実障害物と塗り分けるだけでなく、線種も変える。** 色だけだと、色覚特性や
+ * 屋外の明るいタブレットで区別が付かなくなる。点線なら形で分かる。
+ */
+function drawVirtualObstacles(
+  ctx: CanvasRenderingContext2D,
+  obstacles: VirtualObstacle[],
+  view: ViewState,
+  viewport: Viewport,
+): void {
+  ctx.save()
+  ctx.strokeStyle = COLOR_VIRTUAL
+  ctx.fillStyle = COLOR_VIRTUAL
+  ctx.lineWidth = 2
+  ctx.setLineDash([6, 4])
+
+  for (const obstacle of obstacles) {
+    const center = worldToCanvas(obstacle.x, obstacle.y, view, viewport)
+    const radius = obstacle.radius * view.pixelsPerMeter
+    ctx.beginPath()
+    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2)
+    ctx.stroke()
+
+    // 中心に点。半径が画面上で小さいと円が潰れて見えなくなる。
+    ctx.beginPath()
+    ctx.arc(center.x, center.y, 2, 0, Math.PI * 2)
+    ctx.fill()
+  }
   ctx.restore()
 }
 

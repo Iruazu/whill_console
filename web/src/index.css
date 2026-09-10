@@ -338,3 +338,12 @@ body {
   border-color: var(--crit);
   font-weight: 700;
 }
+
+.radius-control { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.radius-control input[type='range'] { width: 90px; }
+
+/* 置いたまま忘れられるのが一番まずい。0 でないときは目立たせる。 */
+.badge.has-obstacles {
+  color: #d07ce0;
+  border-color: #d07ce0;
+}

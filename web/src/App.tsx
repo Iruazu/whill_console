@@ -34,7 +34,7 @@ export function App() {
     <div className="app">
       <TopBar send={send} stackd={stackd} />
       <div className="layout">
-        <Overview2D />
+        <Overview2D send={send} />
         <ParamsPanel send={send} />
       </div>
     </div>
