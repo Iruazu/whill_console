@@ -47,4 +47,5 @@
 
 | # | 内容 | 結論 |
 |---|---|---|
+| Q4 | ブラウザ側のトークンの持ち方 | **localStorage + 初回入力。** URL のクエリ文字列は却下（履歴・プロキシログ・Referer に残る）。ビルド時の環境変数も却下（成果物に焼き込まれ、変えるたびに再ビルドが要る）。LAN 限定・研究室内の運用という前提での割り切りで、これ以上の防御は無い。共有 PC 向けに消す手段（`clearToken`）は用意してある。 |
 | Q1 | IMU は BNO085 か RT-USB-9AXIS-00 か | **RT-USB-9AXIS-00。** 実装計画書の `bno085` は計画者の記載ミス（2026-09-10 ユーザー確認）。換装の予定は無い。宣言名を `rt_9axis`、モックを `mock_rt_9axis`、`real_package` を `rt_usb_9axisimu_driver` に修正済み。実ドライバは LifecycleNode なので `cr2-base.yaml` に `lifecycle: true` を宣言し、real モードの launch が `configure → activate` の間に約 1.5 s の待ちを入れる必要があることを明記した。 |
