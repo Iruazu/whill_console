@@ -558,6 +558,19 @@ params:
     description: 圧縮画像のレート制限。俯瞰図より優先度が低いので既定は低く。
 
   - node: whill_gateway
+    name: telemetry_publish_rate
+    type: double
+    default: 2.0
+    range: {min: 0.2, max: 10.0, step: 0.2}
+    unit: Hz
+    live: true
+    safety_class: none
+    description: >-
+      ドライバのテレメトリ（バッテリー、電流、温度、レート）を WebSocket へ
+      流す周期。数字を読む用途なので速くしても意味が無い。上げるとしたら、
+      閾値をまたぐ瞬間を追いたいときだけ。時系列で見たいなら Foxglove を使う。
+
+  - node: whill_gateway
     name: bind_address
     type: string
     default: "0.0.0.0"

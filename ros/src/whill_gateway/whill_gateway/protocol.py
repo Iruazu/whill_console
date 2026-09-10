@@ -14,7 +14,7 @@ Web 側の対の実装は `web/src/lib/types.ts`。片方だけ変えないこ�
                     heartbeat, estop, virtual_obstacles, replay_control
   server → client : hello, status, error, params, param_changed,
                     costmap, costmap_update, pose, path, tf, diagnostics,
-                    image, replay
+                    image, replay, telemetry
 
 ## 認証
 
@@ -89,6 +89,12 @@ MSG_OBSTACLES = 'obstacles'
 client → server の `virtual_obstacles` は「操作」で、こちらは「状態」。
 同じ名前にすると、フレームを見たときにどちらの向きか分からなくなる。
 """
+MSG_TELEMETRY = 'telemetry'
+"""ドライバのテレメトリ（現在値と level）。
+
+閾値の判定は gateway 側で済ませて `level` だけ渡す。判定を UI に置くと、
+`whill doctor` や CLI から見たときに画面と違う答えが出る。
+"""
 MSG_REPLAY = 'replay'
 """bag 再生の位置と速度。replay モードでのみ流れる。
 
@@ -100,7 +106,7 @@ SERVER_MESSAGES = frozenset({
     MSG_HELLO, MSG_STATUS, MSG_ERROR, MSG_PARAMS, MSG_PARAM_CHANGED,
     MSG_COSTMAP, MSG_COSTMAP_UPDATE, MSG_POSE, MSG_PATH, MSG_SCAN,
     MSG_TF, MSG_DIAGNOSTICS, MSG_IMAGE, MSG_PONG, MSG_OBSTACLES,
-    MSG_REPLAY,
+    MSG_REPLAY, MSG_TELEMETRY,
 })
 """server → client のフレーム一覧。
 
@@ -116,6 +122,7 @@ PRE_AUTH_MESSAGES = frozenset({MSG_HELLO, MSG_ERROR})
 STREAMS = frozenset({
     MSG_STATUS, MSG_PARAMS, MSG_COSTMAP, MSG_POSE, MSG_PATH, MSG_SCAN,
     MSG_TF, MSG_DIAGNOSTICS, MSG_IMAGE, MSG_OBSTACLES, MSG_REPLAY,
+    MSG_TELEMETRY,
 })
 
 # フレーム種別 → それが属するストリーム。
@@ -144,6 +151,8 @@ DEFAULT_STREAMS = frozenset({
     # replay モードでしか流れないので、既定に入れておいて実害が無い。
     # 逆に外すと「再生しているのに位置が出ない」を購読設定で作れてしまう。
     MSG_REPLAY,
+    # バッテリーと localization の健全性は、繋いだら必ず見えるべきもの。
+    MSG_TELEMETRY,
 })
 """何も指定せずに繋いだときに流れるもの。画像と tf は明示的に要求させる。"""
 

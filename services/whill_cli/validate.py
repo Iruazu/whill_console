@@ -230,7 +230,20 @@ ROBOT_SCHEMA: dict[str, Any] = {
         'ros_domain_id': {'type': 'integer', 'minimum': 0, 'maximum': 232},
         'hardware': {'type': 'object'},
         'tf_static': {'type': 'object', 'additionalProperties': TF_ENTRY},
-        'telemetry_overrides': {'type': 'object'},
+        # 個体ごとに変えられるのは閾値だけ。topic や field を差し替えられると
+        # 「同型 3 台」という前提が崩れ、個体ごとに違うものを見ることになる。
+        'telemetry_overrides': {
+            'type': 'object',
+            'additionalProperties': {
+                'type': 'object',
+                'minProperties': 1,
+                'additionalProperties': False,
+                'properties': {
+                    'warn': {'type': ['number', 'null']},
+                    'crit': {'type': ['number', 'null']},
+                },
+            },
+        },
         'param_overrides': {'type': 'object'},
         'maps': {'type': 'object'},
     },

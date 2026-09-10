@@ -416,3 +416,79 @@ describe('再生位置', () => {
     expect(state.receivedAt.replay).toBe(4242)
   })
 })
+
+describe('ドライバのテレメトリ', () => {
+  const frame = (over: Record<string, unknown> = {}) => ({
+    type: 'telemetry',
+    drivers: [
+      {
+        driver: 'whill_serial',
+        expected: true,
+        items: [
+          {
+            name: 'battery', driver: 'whill_serial',
+            topic: '/whill/states/model_cr2', value: 87, unit: '%',
+            widget: 'bar', level: 'ok', warn: 30, crit: 15,
+            compare: 'below', description: '', age: 0.4,
+          },
+        ],
+      },
+    ],
+    stamp: 12,
+    ...over,
+  })
+
+  it('届く前は null', () => {
+    expect(emptyFrameState().telemetry).toBeNull()
+  })
+
+  it('ドライバごとに取り込む', () => {
+    const state = apply(emptyFrameState(), frame())
+    expect(state.telemetry?.drivers[0]).toEqual({
+      driver: 'whill_serial',
+      expected: true,
+      items: [
+        {
+          name: 'battery', driver: 'whill_serial',
+          topic: '/whill/states/model_cr2', value: 87, unit: '%',
+          widget: 'bar', level: 'ok', warn: 30, crit: 15,
+          compare: 'below', description: '', age: 0.4,
+        },
+      ],
+    })
+  })
+
+  it('値が無いものを 0 にしない', () => {
+    // バッテリー 0 % と「バッテリー不明」を同じ絵にするのが一番まずい誤読
+    const state = apply(emptyFrameState(), frame({
+      drivers: [{
+        driver: 'velodyne', expected: true,
+        items: [{ name: 'scan_rate', value: null, level: 'unknown', age: null }],
+      }],
+    }))
+    const item = state.telemetry!.drivers[0].items[0]
+    expect(item.value).toBeNull()
+    expect(item.age).toBeNull()
+    expect(item.level).toBe('unknown')
+  })
+
+  it('未知の level を ok に倒さない', () => {
+    // gateway が新しい level を足したときに「異常なのに緑」になるのが一番まずい
+    const state = apply(emptyFrameState(), frame({
+      drivers: [{ driver: 'x', expected: true, items: [{ name: 'a' }] }],
+    }))
+    expect(state.telemetry!.drivers[0].items[0].level).toBe('unknown')
+  })
+
+  it('expected を落とさない', () => {
+    // 「値が無い」と「そもそも起動していない」の区別に使う
+    const state = apply(emptyFrameState(), frame({
+      drivers: [{ driver: 'realsense', expected: false, items: [] }],
+    }))
+    expect(state.telemetry!.drivers[0].expected).toBe(false)
+  })
+
+  it('受信時刻を記録する', () => {
+    expect(apply(emptyFrameState(), frame(), 777).receivedAt.telemetry).toBe(777)
+  })
+})

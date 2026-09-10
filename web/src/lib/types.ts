@@ -116,6 +116,46 @@ export interface VirtualObstacle {
   radius: number
 }
 
+/** テレメトリ 1 件の状態。
+ *
+ * `unknown` = 一度も来ていない、`stale` = 来てから途絶えた（値は残す）。
+ * **`unknown` を 0 で描かないこと。** バッテリー 0 % と「バッテリー不明」を
+ * 同じ絵にするのが、この画面で作りうる一番まずい誤読。
+ */
+export type TelemetryLevel = 'unknown' | 'stale' | 'ok' | 'warn' | 'crit'
+
+export interface TelemetryItem {
+  name: string
+  driver: string
+  topic: string
+  /** 値が無ければ null。**0 で埋めない。** */
+  value: number | null
+  unit: string | null
+  widget: 'number' | 'bar' | 'heading'
+  /** 判定は gateway 側で済んでいる。**UI で閾値を評価し直さないこと** —
+   *  2 か所に置くと画面と CLI で答えが食い違う。 */
+  level: TelemetryLevel
+  warn: number | null
+  crit: number | null
+  compare: 'above' | 'below' | 'none'
+  description: string
+  /** 最後に値が入ってからの秒数。stale を「n 秒前」と出すため。 */
+  age: number | null
+}
+
+export interface TelemetryDriver {
+  driver: string
+  /** そのモードで起動するはずか。全項目 unknown かつ expected なら
+   *  「値が無い」ではなく「起動していない」。 */
+  expected: boolean
+  items: TelemetryItem[]
+}
+
+export interface TelemetryFrame {
+  drivers: TelemetryDriver[]
+  stamp: number
+}
+
 /** bag 再生の位置と速度。**replay モードでのみ届く。**
  *
  * `null` が「不明」を意味する。`total` が null なら metadata.yaml を読めて

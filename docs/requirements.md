@@ -164,7 +164,8 @@ Phase 4 で分かったこと:
 
 ### Phase 5 — drivers テレメトリと ops レイアウト
 
-- `robots/*.yaml` の `telemetry:` 宣言（**スキーマは Phase 0 で確定済み**）
+- `robots/*.yaml` の `telemetry:` 宣言（**スキーマは Phase 0 で確定済み**、
+  gateway が読んで配るところまで完了）
 - drivers パネル: ドライバごとに概要行 + 展開詳細、縦積み。電力・温度・yaw vs ndt を含む
 - ops レイアウト（tablet 幅）: 上部帯、俯瞰図（追従 ON・進行方向上）、配車、E-stop、主要テレメトリ
 - 既存 Web 配車 UI の機能を ops に移植

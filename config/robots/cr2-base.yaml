@@ -53,6 +53,9 @@ drivers:
     lifecycle: true
     publishes:
       - {topic: /imu/data_rep145, type: sensor_msgs/msg/Imu, rate_hz: 100.0}
+      # 温度は telemetry で参照している。型が分からないと gateway が購読
+      # できないので、publishes 側にも宣言しておく。
+      - {topic: /imu/temperature, type: sensor_msgs/msg/Temperature, rate_hz: 1.0}
     telemetry:
       - {name: yaw,       topic: /imu/data_rep145, field: __yaw_deg,  unit: deg, widget: heading, warn: null, crit: null, compare: none}
       - {name: imu_rate,  topic: /imu/data_rep145, field: __rate,     unit: Hz,  widget: number,  warn: 80.0, crit: 50.0, compare: below}
