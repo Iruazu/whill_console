@@ -220,6 +220,11 @@ class Gateway(Node):
         kind = message['type']
         now = self.get_clock().now().nanoseconds / 1e9
 
+        if kind == protocol.MSG_PING:
+            # 遅延計測。中身は見ずにそのまま打ち返す。
+            client.enqueue(protocol.safe_encode(protocol.pong(message.get('token'))))
+            return
+
         if kind == protocol.MSG_HEARTBEAT:
             self.manual.heartbeat(now)
             return

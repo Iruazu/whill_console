@@ -14,6 +14,8 @@ interface ConsoleState extends FrameState {
   connection: ConnectionState
   /** 接続が失敗した理由。黙って繋がらない状態を作らない。 */
   connectionDetail: string
+  /** gateway との往復遅延 (ms)。時計合わせが要らないので往復で測る。 */
+  latencyMs: number | null
   /** gateway が新しい type を足しても古い UI が壊れないよう無視するが、
    *  無視した数は数える。増え続けているなら UI が古い。 */
   unhandledFrames: number
@@ -23,6 +25,7 @@ interface ConsoleState extends FrameState {
   headingUp: boolean
 
   setConnection: (state: ConnectionState, detail?: string) => void
+  setLatency: (ms: number) => void
   ingest: (frame: Record<string, unknown>, now?: number) => void
   setFollowRobot: (value: boolean) => void
   setHeadingUp: (value: boolean) => void
@@ -34,12 +37,20 @@ export const useConsoleStore = create<ConsoleState>((set) => ({
   ...emptyFrameState(),
   connection: 'disconnected',
   connectionDetail: '',
+  latencyMs: null,
   unhandledFrames: 0,
   followRobot: false,
   headingUp: false,
 
   setConnection: (connection, detail = '') =>
-    set({ connection, connectionDetail: detail }),
+    set({
+      connection,
+      connectionDetail: detail,
+      // 切れたら遅延の表示も消す。古い数字が残ると「速い」と誤読する。
+      ...(connection === 'connected' ? {} : { latencyMs: null }),
+    }),
+
+  setLatency: (latencyMs) => set({ latencyMs }),
 
   ingest: (frame, now = Date.now()) =>
     set((state) => {

@@ -266,3 +266,75 @@ body {
 .change-log li.ok .mark { color: var(--ok); }
 .change-log li.ng .mark { color: var(--crit); }
 .change-log .why { color: var(--muted); }
+
+/* ---- E-stop ---- */
+
+/* 作動中は帯そのものを赤くする。1 人が押したら全員の画面で分かること。 */
+.topbar.estop-engaged {
+  background: #3a1c1c;
+  border-bottom-color: var(--crit);
+}
+
+.estop:disabled {
+  background: var(--border);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.estop.engaged {
+  background: var(--text);
+  color: var(--crit);
+}
+
+.estop-banner {
+  background: var(--crit);
+  color: #14171c;
+  font-weight: 700;
+  text-align: center;
+  padding: 6px;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.modal-body {
+  background: var(--panel);
+  border: 1px solid var(--crit);
+  border-radius: 6px;
+  padding: 20px;
+  max-width: 460px;
+}
+
+.modal-body h2 { margin: 0 0 10px; font-size: 16px; }
+.modal-body p { font-size: 13px; line-height: 1.7; }
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.modal-actions button {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 6px 16px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.modal-actions button.danger {
+  background: var(--crit);
+  color: #14171c;
+  border-color: var(--crit);
+  font-weight: 700;
+}

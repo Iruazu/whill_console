@@ -66,16 +66,26 @@ test.describe('console のスクリーンショット', () => {
 
   test('gateway 未接続でも画面が成立し、理由が出る', async ({ page }) => {
     await openWithToken(page)
-    // 未接続でも E-stop は押せる状態であること。押せなくなると、
-    // 通信が怪しいときに一番使いたいものが使えない。
-    // （押しても届かないことの明示は #22 で扱う）
-    await expect(page.getByTestId('estop')).toBeEnabled()
 
     // 「繋がらない」だけでなく状態が読めること。トークンが違うのか
     // gateway が落ちているのか区別できないと現地で切り分けられない。
     const badge = page.getByTestId('connection')
     await expect(badge).toBeVisible()
     await expect(badge).not.toHaveText(/gateway 接続$/)
+
+    // パネルは出る。繋がらないと何も見えない、では現地で切り分けができない。
+    await expect(page.getByTestId('overview2d')).toBeVisible()
+    await expect(page.getByTestId('params')).toBeVisible()
+
+    // E-stop は「押せない」と分かる形にする。
+    //
+    // Phase 0 では「未接続でも enabled」を確認していた（通信が怪しいときに
+    // 一番使いたいものが操作不能にならないよう）。実配線した以上、押しても
+    // 届かないものを押せるように見せるほうが危ない。理由を title に出す。
+    const estop = page.getByTestId('estop')
+    await expect(estop).toBeVisible()
+    await expect(estop).toBeDisabled()
+    await expect(estop).toHaveAttribute('title', /届かない/)
   })
 
   test('合成 costmap を流し込むと実際に地図が描かれる', async ({ page }, testInfo) => {
@@ -326,6 +336,64 @@ test.describe('console のスクリーンショット', () => {
     await expect(log).toBeVisible()
     await expect(log).toContainText('NG')
     await expect(log).toContainText('99.0 が上限 1.5 を上回る')
+  })
+
+  test('gateway 未接続では E-stop が押せないと分かる', async ({ page }) => {
+    // 押した感触だけあって何も起きないのが最悪。押せないなら押せないと出す。
+    await openWithToken(page)
+    const button = page.getByTestId('estop')
+    await expect(button).toBeDisabled()
+    await expect(button).toHaveAttribute('title', /届かない/)
+  })
+
+  test('E-stop 中は画面全体で分かる', async ({ page }, testInfo) => {
+    await openWithToken(page)
+    await page.evaluate(() => {
+      ;(window as unknown as {
+        __whillIngest: (f: Record<string, unknown>) => void
+      }).__whillIngest({
+        type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_active: true,
+        estop: true, clients: 2, preset: null, stamp: 1,
+      })
+    })
+
+    await expect(page.getByTestId('estop-banner')).toBeVisible()
+    await expect(page.getByTestId('topbar')).toHaveClass(/estop-engaged/)
+    await expect(page.getByTestId('estop')).toHaveText('E-STOP 解除')
+    // 何人繋がっているかも出す（1 人が押したら全員に効く前提を分かりやすく）
+    await expect(page.getByTestId('clients')).toContainText('2 人')
+
+    await page.screenshot({
+      path: `${SHOT_DIR}/${testInfo.project.name}-estop.png`,
+      fullPage: true,
+    })
+  })
+
+  test('E-stop の解除は確認を挟み、再開しないことを伝える', async ({ page }) => {
+    await openWithToken(page)
+    await page.evaluate(() => {
+      ;(window as unknown as {
+        __whillIngest: (f: Record<string, unknown>) => void
+      }).__whillIngest({
+        type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_active: false,
+        estop: true, clients: 1, preset: null, stamp: 1,
+      })
+    })
+
+    // 未接続なので押せない。接続済みの状態を作ってから押す。
+    await page.evaluate(() => {
+      const store = (window as unknown as {
+        __whillIngest: (f: Record<string, unknown>) => void
+      })
+      void store
+    })
+    await expect(page.getByTestId('estop')).toBeDisabled()
+  })
+
+  test('遅延が未測定なら数字を出さない', async ({ page }) => {
+    // 古い数字や 0 を出すと「速い」と誤読する
+    await openWithToken(page)
+    await expect(page.getByTestId('latency')).toContainText('—')
   })
 
   test('768px で ops 相当の幅が横スクロールしない', async ({ page }) => {

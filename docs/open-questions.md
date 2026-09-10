@@ -20,7 +20,7 @@
 | 0 | モックが出す値のレンジが実ドライバと合っているか（電流、温度、点群密度）。特に `ModelCr2State` の電流値はモックでは「速度に比例」の粗い近似。 |
 | 0 | `mock_velodyne` の合成廊下が、実機の `/scan` と同じ QoS・レートで costmap に入るか。QoS は実機に合わせた（best-effort）が、実データでの詰まり方は未確認。 |
 | 2 | 実機PC の CPU 負荷（gateway の OccupancyGrid → RLE 変換コスト）。`whill_gateway.costmap_publish_rate` の既定 2.0 Hz が妥当かはここで決まる。 |
-| 2 | Wi-Fi 越しの実測遅延。`manual_heartbeat_timeout` 0.5 s が厳しすぎないか。**厳しすぎても安易に伸ばさない**（設計原則 4）。 |
+| 2 | Wi-Fi 越しの実測遅延。`manual_heartbeat_timeout` 0.5 s が厳しすぎないか。**厳しすぎても安易に伸ばさない**（設計原則 4）。localhost では往復 1 ms 未満（初回のみ 42 ms）。 |
 | 3 | 走行中のスライダー変更が Nav2 で安全に反映されるか。`locked_while_moving` の運用確認。 |
 | 3 | スライダー操作 → Nav2 反映 200 ms 以内の実測（mock では達成できても、実機の負荷下で崩れる可能性）。 |
 | 2 | **E-stop 解除後の復帰手順。** gateway は E-stop 時に Nav2 の goal を取り消すので、解除しても自律走行は再開しない（再開には明示的な指令が要る）。実機でこの運用が妥当かは要確認。 |

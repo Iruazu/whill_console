@@ -40,10 +40,12 @@ MSG_MANUAL_VEL = 'manual_vel'
 MSG_HEARTBEAT = 'heartbeat'
 MSG_ESTOP = 'estop'
 MSG_VIRTUAL_OBSTACLES = 'virtual_obstacles'
+MSG_PING = 'ping'
 
 CLIENT_MESSAGES = frozenset({
     MSG_AUTH, MSG_SUBSCRIBE, MSG_PARAM_SET, MSG_PRESET_APPLY,
     MSG_MANUAL_VEL, MSG_HEARTBEAT, MSG_ESTOP, MSG_VIRTUAL_OBSTACLES,
+    MSG_PING,
 })
 
 # ---- server → client -------------------------------------------------------
@@ -61,11 +63,12 @@ MSG_TF = 'tf'
 MSG_DIAGNOSTICS = 'diagnostics'
 MSG_SCAN = 'scan'
 MSG_IMAGE = 'image'
+MSG_PONG = 'pong'
 
 SERVER_MESSAGES = frozenset({
     MSG_HELLO, MSG_STATUS, MSG_ERROR, MSG_PARAMS, MSG_PARAM_CHANGED,
     MSG_COSTMAP, MSG_COSTMAP_UPDATE, MSG_POSE, MSG_PATH, MSG_SCAN,
-    MSG_TF, MSG_DIAGNOSTICS, MSG_IMAGE,
+    MSG_TF, MSG_DIAGNOSTICS, MSG_IMAGE, MSG_PONG,
 })
 """server → client のフレーム一覧。
 
@@ -213,6 +216,16 @@ def status(*, robot_id: str, mode: str, nav_active: bool, estop: bool,
         'latency_ms': latency_ms,
         'preset': preset,
     }
+
+
+def pong(token: Any) -> dict[str, Any]:
+    """`ping` をそのまま打ち返す。
+
+    遅延はクライアント側の往復で測る。`status` の `stamp` と受信時刻の差では
+    測らない — ROS の時刻とブラウザの時計は同期していないし、replay モードでは
+    `use_sim_time` で ROS 側が実時刻ですらない。**往復なら時計合わせが要らない。**
+    """
+    return {'type': MSG_PONG, 'token': token}
 
 
 def encode(message: dict[str, Any]) -> str:

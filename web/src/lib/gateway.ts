@@ -20,6 +20,14 @@ import type { ConnectionState } from './types'
 export const RECONNECT_BASE_MS = 500
 export const RECONNECT_MAX_MS = 10_000
 
+export const PING_INTERVAL_MS = 2000
+/** 遅延計測の周期。
+ *
+ * 往復で測る。`status` の `stamp` と受信時刻の差では測らない — ROS の時刻と
+ * ブラウザの時計は同期していないし、replay モードでは `use_sim_time` で
+ * ROS 側が実時刻ですらない。**往復なら時計合わせが要らない。**
+ */
+
 export interface GatewayOptions {
   url: string
   token: string
@@ -27,11 +35,18 @@ export interface GatewayOptions {
   streams?: string[]
   onState: (state: ConnectionState, detail?: string) => void
   onFrame: (frame: Record<string, unknown>) => void
+  /** 往復遅延 (ms)。測れたときだけ呼ばれる。 */
+  onLatency?: (ms: number) => void
   /** テスト用の差し替え口。既定はブラウザの WebSocket。 */
   socketFactory?: (url: string) => WebSocketLike
-  /** テスト用。既定は setTimeout。 */
+  /** 再接続の予約。テスト用の差し替え口。既定は setTimeout。 */
   schedule?: (fn: () => void, ms: number) => unknown
   cancel?: (handle: unknown) => void
+  /** ping の周期実行。**再接続の予約とは別に持つ。**
+   *  兼用すると、テストで再接続を進めたつもりが ping も撃つ、という
+   *  紛らわしい状態になる。既定は setInterval。 */
+  startInterval?: (fn: () => void, ms: number) => unknown
+  stopInterval?: (handle: unknown) => void
 }
 
 /** 使う機能だけに絞ったインタフェース。テストで偽物を差せるようにするため。 */
@@ -51,6 +66,9 @@ export class GatewayClient {
   private closedByUs = false
   private authFailed = false
   private authenticated = false
+  private pingTimer: unknown = null
+  private pendingPing: { token: number; sentAt: number } | null = null
+  private pingCounter = 0
 
   constructor(private readonly options: GatewayOptions) {}
 
@@ -104,6 +122,16 @@ export class GatewayClient {
         this.authenticated = true
         this.attempt = 0
         this.options.onState('connected')
+        this.startPinging()
+      }
+
+      if (frame.type === 'pong') {
+        const pending = this.pendingPing
+        if (pending && frame.token === pending.token) {
+          this.pendingPing = null
+          this.options.onLatency?.(Date.now() - pending.sentAt)
+        }
+        return
       }
 
       if (frame.type === 'error' && frame.fatal === true) {
@@ -123,6 +151,7 @@ export class GatewayClient {
     socket.onclose = () => {
       this.socket = null
       this.authenticated = false
+      this.stopPinging()
       if (this.closedByUs) {
         this.options.onState('disconnected')
         return
@@ -135,6 +164,30 @@ export class GatewayClient {
       this.options.onState('disconnected')
       this.scheduleReconnect()
     }
+  }
+
+  private startPinging(): void {
+    this.stopPinging()
+    const start =
+      this.options.startInterval ?? ((fn, ms) => setInterval(fn, ms))
+    this.pingTimer = start(() => this.sendPing(), PING_INTERVAL_MS)
+    this.sendPing()
+  }
+
+  private sendPing(): void {
+    if (!this.socket || !this.authenticated) return
+    this.pingCounter += 1
+    this.pendingPing = { token: this.pingCounter, sentAt: Date.now() }
+    this.socket.send(JSON.stringify({ type: 'ping', token: this.pingCounter }))
+  }
+
+  private stopPinging(): void {
+    this.pendingPing = null
+    if (this.pingTimer === null) return
+    const stop =
+      this.options.stopInterval ?? ((handle) => clearInterval(handle as number))
+    stop(this.pingTimer)
+    this.pingTimer = null
   }
 
   private scheduleReconnect(): void {
@@ -158,6 +211,7 @@ export class GatewayClient {
 
   close(): void {
     this.closedByUs = true
+    this.stopPinging()
     const cancel = this.options.cancel ?? ((handle) => clearTimeout(handle as number))
     if (this.timer !== null) cancel(this.timer)
     this.timer = null

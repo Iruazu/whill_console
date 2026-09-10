@@ -13,6 +13,7 @@ export function useGateway(token: string): GatewayClient | null {
   const setConnection = useConsoleStore((s) => s.setConnection)
   const ingest = useConsoleStore((s) => s.ingest)
   const reset = useConsoleStore((s) => s.reset)
+  const setLatency = useConsoleStore((s) => s.setLatency)
   const [client, setClient] = useState<GatewayClient | null>(null)
   const wasConnected = useRef(false)
 
@@ -37,6 +38,7 @@ export function useGateway(token: string): GatewayClient | null {
         setConnection(state, detail)
       },
       onFrame: (frame) => ingest(frame),
+      onLatency: setLatency,
     })
     instance.connect()
     setClient(instance)
@@ -45,7 +47,7 @@ export function useGateway(token: string): GatewayClient | null {
       instance.close()
       setClient(null)
     }
-  }, [token, setConnection, ingest, reset])
+  }, [token, setConnection, ingest, reset, setLatency])
 
   return client
 }
