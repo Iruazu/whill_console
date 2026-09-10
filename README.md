@@ -6,6 +6,11 @@ WHILL CR 専用の Web 開発・運用コンソール。sim・実機・log 再�
 rviz / gazebo の置き換えを狙うが、**3D 表示・bag 解析・プロットは Foxglove /
 Lichtblick に委譲する**。自作するのは 2D 俯瞰・パラメータ・運用・ドライバ監視だけ。
 
+> **リポジトリ名について**: GitHub 上は `Iruazu/whill_console`。実装計画書と
+> ディレクトリ・パッケージ名は `whill_platform` のままだが、`Iruazu/whill_platform`
+> は別プロジェクト（Firebase 配車プラットフォーム）が先に使っていたため、
+> GitHub 側だけ名前を変えた。
+
 対象は WHILL CR ×3（同型）。既存の自律走行スタック
 [`whill_lab0_ros2`](https://github.com/Iruazu/whill_lab0_ros2)（Nav2 / scan-to-map
 localizer / Layer D / Web 配車 UI）は壊さず、launch から include する。

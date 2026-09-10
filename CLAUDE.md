@@ -37,6 +37,13 @@ rviz / gazebo に代わる **WHILL CR 専用の Web コンソール**。sim・�
    gateway がこれを introspection してスライダーを自動生成するので、descriptor がないと UI に出ない。
 7. **作らないもの**: 非リアルタイム高速 sim、自作 3D、Web ターミナル、他ロボット対応。
 
+## リポジトリ名
+
+GitHub 上は **`Iruazu/whill_console`**（private）。ディレクトリ名・パッケージ名・
+実装計画書の表記は `whill_platform` のまま。`Iruazu/whill_platform` は別プロジェクト
+（Firebase 配車プラットフォーム、2026-05 に作られたもの）が先に使っていたため、
+GitHub 側だけ名前を変えた。両者を混同しないこと。
+
 ## リポジトリ構成
 
 | ディレクトリ | 中身 | 管理 |
