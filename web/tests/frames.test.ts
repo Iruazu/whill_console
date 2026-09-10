@@ -546,3 +546,38 @@ describe('配車', () => {
     expect(state.receivedAt.dispatch_state).toBe(555)
   })
 })
+
+describe('派生テレメトリ', () => {
+  it('ドライバのカードに紛れ込ませない', () => {
+    // どのセンサの話か読み違えるのを避ける
+    const state = apply(emptyFrameState(), {
+      type: 'telemetry',
+      stamp: 1,
+      drivers: [],
+      derived: [{
+        name: 'yaw_rate_vs_ndt', driver: 'derived', topic: '',
+        value: 0.42, unit: 'deg/s', widget: 'number', level: 'ok',
+        warn: 5, crit: 10, compare: 'above', description: '', age: 0.2,
+      }],
+    })
+    expect(state.telemetry?.drivers).toEqual([])
+    expect(state.telemetry?.derived).toHaveLength(1)
+    expect(state.telemetry?.derived[0].name).toBe('yaw_rate_vs_ndt')
+    expect(state.telemetry?.derived[0].unit).toBe('deg/s')
+  })
+
+  it('derived が無いフレームでも落ちない', () => {
+    const state = apply(emptyFrameState(), { type: 'telemetry', drivers: [] })
+    expect(state.telemetry?.derived).toEqual([])
+  })
+
+  it('測れていないときを 0 にしない', () => {
+    // 止まっているあいだは評価できない。0 にすると「正常」に見える
+    const state = apply(emptyFrameState(), {
+      type: 'telemetry', drivers: [],
+      derived: [{ name: 'yaw_rate_vs_ndt', value: null, level: 'unknown' }],
+    })
+    expect(state.telemetry?.derived[0].value).toBeNull()
+    expect(state.telemetry?.derived[0].level).toBe('unknown')
+  })
+})

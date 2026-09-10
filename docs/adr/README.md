@@ -10,3 +10,4 @@
 | [0003](0003-websocket-library.md) | WebSocket は aiohttp で実装する | 採択 |
 | [0004](0004-replay-is-observation-only.md) | 再生は「観測の再現」であって「再走行」ではない | 採択 |
 | [0005](0005-dispatch-goes-through-the-gateway.md) | 配車は gateway を通す。手動操作は二重化しない | 採択 |
+| [0006](0006-yaw-rate-not-yaw-angle.md) | localization の乖離は角度ではなく変化率で見る | 採択 |

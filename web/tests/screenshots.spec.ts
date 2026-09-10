@@ -791,6 +791,13 @@ test.describe('console のスクリーンショット', () => {
         ],
       },
     ],
+    derived: [
+      {
+        name: 'yaw_rate_vs_ndt', driver: 'derived', topic: '',
+        value: 0.42, unit: 'deg/s', widget: 'number', level: 'ok',
+        warn: 5, crit: 10, compare: 'above', description: '', age: 0.2,
+      },
+    ],
     ...over,
   })
 
@@ -890,5 +897,54 @@ test.describe('console のスクリーンショット', () => {
     await expect(
       page.getByTestId('driver-whill_serial').locator('.badge.level-warn'),
     ).toHaveText('注意')
+  })
+
+  test('派生テレメトリは別枠に出る', async ({ page }) => {
+    // 単一のドライバに属さない。カードに紛れ込ませるとどのセンサの話か
+    // 読み違える。
+    await openWithToken(page)
+    await feed(page, telemetryFrame())
+    await expect(page.getByTestId('derived')).toBeVisible()
+    const row = page.getByTestId('derived-yaw_rate_vs_ndt')
+    await expect(row).toBeVisible()
+    await expect(row.getByTestId('telemetry-value-yaw_rate_vs_ndt')).toHaveText('0.42 deg/s')
+    // ドライバのカードの中には出ないこと
+    await expect(
+      page.getByTestId('driver-rt_9axis').getByTestId('telemetry-yaw_rate_vs_ndt'),
+    ).toHaveCount(0)
+  })
+
+  test('localization 乖離が crit になると赤くなる', async ({ page }, testInfo) => {
+    await openWithToken(page)
+    await feed(page, telemetryFrame({
+      derived: [{
+        name: 'yaw_rate_vs_ndt', driver: 'derived', topic: '',
+        value: 18.4, unit: 'deg/s', widget: 'number', level: 'crit',
+        warn: 5, crit: 10, compare: 'above', description: '', age: 0.2,
+      }],
+    }))
+    const row = page.getByTestId('derived-yaw_rate_vs_ndt')
+    await expect(row).toHaveClass(/level-crit/)
+    await expect(row.locator('.badge.level-crit')).toHaveText('異常')
+    await page.screenshot({
+      path: `${SHOT_DIR}/${testInfo.project.name}-derived.png`,
+      fullPage: true,
+    })
+  })
+
+  test('測れていない乖離を 0 で描かない', async ({ page }) => {
+    // 止まっているあいだは評価できない。0 は「正常」に見えてしまう。
+    await openWithToken(page)
+    await feed(page, telemetryFrame({
+      derived: [{
+        name: 'yaw_rate_vs_ndt', driver: 'derived', topic: '', value: null,
+        unit: 'deg/s', widget: 'number', level: 'unknown', warn: 5, crit: 10,
+        compare: 'above', description: '', age: null,
+      }],
+    }))
+    await expect(
+      page.getByTestId('derived-yaw_rate_vs_ndt')
+        .getByTestId('telemetry-value-yaw_rate_vs_ndt'),
+    ).toHaveText('—')
   })
 })

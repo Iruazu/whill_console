@@ -334,6 +334,7 @@ export function applyFrame(
           receivedAt: stamp,
           telemetry: {
             drivers: ((frame.drivers as WireFrame[]) ?? []).map(toTelemetryDriver),
+            derived: ((frame.derived as WireFrame[]) ?? []).map(toTelemetryItem),
             stamp: num(frame.stamp),
           },
         },

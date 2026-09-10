@@ -153,6 +153,10 @@ export interface TelemetryDriver {
 
 export interface TelemetryFrame {
   drivers: TelemetryDriver[]
+  /** 単一のドライバに属さないもの（yaw_rate_vs_ndt）。
+   *
+   *  ドライバのカードに紛れ込ませない。どのセンサの話か読み違える。 */
+  derived: TelemetryItem[]
   stamp: number
 }
 

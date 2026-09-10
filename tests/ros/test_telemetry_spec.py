@@ -360,7 +360,11 @@ def test_the_real_declaration_loads():
     base = yaml.safe_load((root / 'robots' / 'cr2-base.yaml').read_text('utf-8'))
     robot = yaml.safe_load((root / 'robots' / 'cr2-01.yaml').read_text('utf-8'))
     specs = load_specs(base, robot)
-    assert {s.name for s in specs} >= {'battery', 'yaw', 'temp', 'scan_rate'}
+    assert {s.name for s in specs} >= {'battery', 'yaw_rate', 'temp', 'scan_rate'}
+
+    # 姿勢を出さないドライバに `__yaw_deg` を宣言していないこと。
+    # 宣言すると「常に yaw 0 度」を正しい値として表示することになる。
+    assert not any(s.field == '__yaw_deg' for s in specs)
 
 
 def test_every_telemetry_topic_is_declared_in_publishes():
