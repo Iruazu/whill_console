@@ -15,7 +15,6 @@ import shlex
 import signal
 import subprocess
 import sys
-from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -141,7 +140,7 @@ def doctor(
 
     try:
         result = subprocess.run(['ros2', 'topic', 'list'], capture_output=True,
-                                text=True, timeout=20, env=_ros_env())
+                                text=True, timeout=20, env=_ros_env(), check=False)
     except FileNotFoundError:
         console.print(f'[red]ros2 が見つからない。{_ros_setup_hint()}[/red]')
         raise typer.Exit(2) from None

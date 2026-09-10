@@ -58,7 +58,8 @@ Phase 0 で追加した判定手段: `whill doctor` は `ros2 topic list` を人
 
 ### Phase 1 — パラメータ registry
 
-- `config/params.yaml` のスキーマ確定と JSON Schema 検証（**Phase 0 で先行実装済み**）
+- `config/params.yaml` のスキーマ確定と JSON Schema 検証（**Phase 0 で先行実装済み**、
+  **CI 化まで完了**）
 - `whill_params`: yaml → `nav2_params.yaml` を生成し、既存 `whill_lab0_ros2` の設定と差分ゼロ（**完了**）
 - 各パラメータに `live` / `safety_class` を付与（**Phase 0 で先行実装済み**）
 - `ros2 param set` 経路で Nav2 controller の数値が即時反映されることを mock 構成で確認（**完了**）

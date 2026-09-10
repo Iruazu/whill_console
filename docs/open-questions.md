@@ -35,7 +35,7 @@
 |---|---|---|
 | K1 | **`whill_lab0_ros2/install` に旧 `whill_bringup` が残っている。** src からは既に消えているが install ツリーには居座っており、source 順によっては本リポの `whill_bringup` を隠す。 | `scripts/env.sh` が既存スタック → 本リポの順に source して回避済み。恒久対応は既存リポ側で `install/` を作り直すこと。 |
 | K2 | **CycloneDDS の設定が `enx00e04c6808dc`（USB-Ethernet アダプタ）を指しており、未接続時に `lo` へ落ちて multicast が無効になる。** mock では動くが、gateway を他PC から繋ぐ Phase 2 で問題になる可能性がある。 | Phase 2 で `config/cyclonedds-runtime.xml` を本リポに持ち、開発時（アダプタ無し）と実機時で切り替える。 |
-| K3 | **ROS を source した shell では pytest が ROS 製プラグインを自動 load して落ちる**（`launch_pytest` → `lark` 不在）。ini の `-p no:` は load 後に読まれるので効かない。 | `scripts/test.sh` が `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` を export する。直接 pytest を叩くときも同じ変数が要る。 |
+| K3 | **ROS を source した shell では pytest が ROS 製プラグインを自動 load して落ちる**（`launch_pytest` → `lark` 不在）。ini の `-p no:` は load 後に読まれるので効かない。 | `scripts/test.sh` と CI の `ros` ジョブが `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` を export する。直接 pytest を叩くときも同じ変数が要る。 |
 | K4 | **Playwright の WebKit を入れるには `sudo` が要る**（`playwright install --with-deps`）。 | ops-tablet プロジェクトは Chromium を 768px で使う。見たいのはレイアウトでありエンジン差ではない。実機 tablet の確認は B の実機検証待ちに計上。 |
 | K5 | **`mode=real` と `mode=sim` は未配線。** 呼ぶと明示的に例外で落ちる。 | 黙って何も起動しないより落ちるほうが安全（「実機モードで動いたつもり」を防ぐ）。real は実機復帰後、sim は `sim/` の world 整備後。 |
 

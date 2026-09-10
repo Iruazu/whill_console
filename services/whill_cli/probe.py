@@ -39,8 +39,10 @@ def _run(args: list[str], env: dict[str, str],
     混ぜると値のパースがその警告を掴んで落ちる（実際に踏んだ）。
     """
     try:
+        # check=False: 返り値は呼び出し側で見る。ros2 param get が
+        # 失敗するのは想定内（ノードがまだ居ない等）で、例外にしたくない。
         proc = subprocess.run(args, capture_output=True, text=True,
-                              timeout=timeout, env=env)
+                              timeout=timeout, env=env, check=False)
     except subprocess.TimeoutExpired:
         return 124, '', 'タイムアウト'
     except FileNotFoundError:
@@ -161,7 +163,9 @@ def probe_key(registry, key: str, env: dict[str, str]) -> ProbeResult:
 
 def _close_enough(a: Any, b: Any) -> bool:
     if isinstance(a, list) and isinstance(b, list):
-        return len(a) == len(b) and all(_close_enough(x, y) for x, y in zip(a, b))
+        # 長さは直前の len 比較で保証済み。strict=True で意図を明示する
+        return len(a) == len(b) and all(
+            _close_enough(x, y) for x, y in zip(a, b, strict=True))
     if isinstance(a, (int, float)) and isinstance(b, (int, float)):
         return abs(float(a) - float(b)) < 1e-6
     return a == b

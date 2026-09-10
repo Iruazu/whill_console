@@ -1,0 +1,156 @@
+name: CI
+
+# 設定の単一ソースが壊れた状態で main に入らないようにする。
+# 人が手で ./scripts/test.sh を走らせている限り、いつか忘れる。
+#
+# ジョブは 3 本に分ける。壊れた場所が名前で分かるようにするため:
+#   services — config/ の検証と CLI。ROS 不要
+#   web      — 型検査、vitest、Playwright スクリーンショット
+#   ros      — registry と ParameterDescriptor。humble のコンテナで動かす
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # 同じ PR に続けて push したとき、古い実行を止める
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  services:
+    name: services (config / CLI)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: uv を入れる
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/uv.lock
+
+      # ROS を入れないジョブ。ここが通ることで
+      # 「CLI と config 検証は ROS 無しで動く」という設計が保たれる。
+      # 崩すと新しい開発機や CI で config を検証できなくなる。
+      - name: 依存を同期する
+        working-directory: services
+        run: uv sync --frozen
+
+      - name: config/ の検証と CLI のテスト
+        working-directory: services
+        env:
+          WHILL_PLATFORM_CONFIG: ${{ github.workspace }}/config
+        run: uv run pytest ../tests/services -q
+
+      - name: whill params validate が通ること
+        working-directory: services
+        env:
+          WHILL_PLATFORM_CONFIG: ${{ github.workspace }}/config
+        run: uv run whill params validate
+
+      - name: lint
+        working-directory: services
+        run: uv run ruff check .
+
+  web:
+    name: web (typecheck / vitest / screenshots)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: pnpm を有効にする
+        run: corepack enable pnpm
+
+      - name: 依存を入れる
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: 型検査
+        working-directory: web
+        run: pnpm exec tsc -b
+
+      - name: vitest
+        working-directory: web
+        run: pnpm exec vitest run
+
+      # Chromium だけ入れる。WebKit は --with-deps に sudo が要るうえ、
+      # ここで見たいのはレイアウトであってエンジン差ではない。
+      # 実機 tablet での確認は docs/open-questions.md の実機検証待ち。
+      - name: Playwright の Chromium
+        working-directory: web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: スクリーンショットを撮る
+        working-directory: web
+        run: pnpm exec playwright test
+
+      # UI 変更の PR にスクリーンショットを添付する規約があるので、
+      # CI が撮ったものをそのまま拾えるようにしておく。
+      - name: スクリーンショットを artifact に上げる
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: docs/screenshots/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: 失敗時の trace
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-trace
+          path: web/test-results/
+          retention-days: 7
+
+  ros:
+    name: ros (registry / descriptors)
+    runs-on: ubuntu-22.04
+    container: ros:humble-ros-base
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: colcon と pytest を入れる
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            python3-colcon-common-extensions python3-pytest python3-yaml
+          rm -rf /var/lib/apt/lists/*
+
+      # tests/ros に必要なのは whill_params だけ。mock ドライバは opencv 等を
+      # 引くので、CI では建てない（実行時の検証は mock 構成のローカル実行で行う）。
+      - name: whill_params を建てる
+        shell: bash
+        run: |
+          set -eo pipefail
+          set +u
+          source /opt/ros/humble/setup.bash
+          set -u
+          cd ros
+          colcon build --symlink-install --packages-select whill_params
+
+      # 既存スタック (whill_lab0_ros2) の nav2_params.yaml は CI に無いので、
+      # それに依存するテストは skip される。skip されたことが見えるように
+      # -rs を付ける。全部 skip されて緑、を見逃さないため。
+      - name: registry / descriptors / params 生成のテスト
+        shell: bash
+        env:
+          WHILL_PLATFORM_CONFIG: ${{ github.workspace }}/config
+          # ROS を source した環境では pytest が ROS 製プラグイン
+          # (launch_pytest) を自動 load し、依存不足で collection 前に落ちる。
+          # ini の `-p no:` は load の後に読まれるので効かない。
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
+        run: |
+          set -eo pipefail
+          set +u
+          source /opt/ros/humble/setup.bash
+          source ros/install/setup.bash
+          set -u
+          python3 -m pytest tests/ros -q -rs
