@@ -5,10 +5,12 @@
 # の外を指す。そのまま使うと**全部 ABORTED になり、配車の配線が壊れているのか
 # 地点が地図の外なのか区別が付かない。**
 #
-# 座標は `scripts/make_mock_map.py` が作る廊下の中。廊下は原点中心で
-# x が ±10 m、y が ±3 m ほど空いている。壁際を避けて y=0 に置く。
+# 座標は `scripts/make_mock_map.py` が作る廊下の中。廊下は原点中心で、
+# 壁の内側は x が ±9.85 m、y が ±2.35 m（`free_bounds()`）。壁際は inflation で
+# 到達不能になるので、車体幅ぶん内側に取って y=0 に置く。
 #
-# 寸法を変えるときは make_mock_map.py と一対で見直すこと。
+# 寸法を変えるときは make_mock_map.py と一対で見直すこと。地点が廊下の中に
+# あることは `tests/ros/test_dispatch.py` が生成器の定数を見て検査する。
 frame_id: map
 waypoints:
   - name: west

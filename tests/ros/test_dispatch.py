@@ -192,24 +192,44 @@ def test_teleop_is_not_bridged():
     assert 'teleop' not in dispatch._STATE_KEYS
 
 
+FOOTPRINT_M = 0.4
+"""車体まわりに要る余裕。WHILL CR の全幅は約 0.6 m。
+
+壁ぎりぎりの地点は inflation layer で到達不能になり、「地点は地図の中に
+あるのに ABORTED」という一番分かりにくい失敗になる。"""
+
+
 def test_mock_waypoints_are_inside_the_mock_map():
     """実機の地点をそのまま mock で使うと全部 ABORTED になる。
 
     「配線が壊れているのか地点が地図の外なのか」が区別できない状態を作らない。
+
+    生成物（`mock_corridor.yaml`）ではなく生成器の定数を見る。生成物は
+    gitignore されていて CI には無い — **無いから skip では、この検査が
+    CI で一度も走らないことになる。**
     """
+    import sys
     from pathlib import Path
 
     import yaml
 
-    root = Path(__file__).resolve().parents[2] / 'ros' / 'src' / 'whill_bringup'
-    grid = yaml.safe_load(
-        (root / 'config' / 'mock_corridor.yaml').read_text('utf-8'))
-    points = yaml.safe_load(
-        (root / 'config' / 'mock_waypoints.yaml').read_text('utf-8'))
+    root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(root / 'scripts'))
+    try:
+        from make_mock_map import free_bounds
+    finally:
+        sys.path.pop(0)
 
-    ox, oy = grid['origin'][0], grid['origin'][1]
-    # PGM の寸法は読まずに、origin が中心対称であることを使う。
-    assert points['frame_id'] == grid.get('frame_id', 'map')
+    x_min, x_max, y_min, y_max = free_bounds()
+    points = yaml.safe_load(
+        (root / 'ros' / 'src' / 'whill_bringup' / 'config'
+         / 'mock_waypoints.yaml').read_text('utf-8'))
+
+    assert points['frame_id'] == 'map'
+    assert points['waypoints'], '地点が 1 つも無い'
     for wp in points['waypoints']:
-        assert ox < wp['x'] < -ox, f'{wp["name"]} が地図の外'
-        assert oy < wp['y'] < -oy, f'{wp["name"]} が地図の外'
+        # 壁ぎりぎりだと inflation で到達不能になる。車体半径ぶん内側を要求する。
+        assert x_min + FOOTPRINT_M < wp['x'] < x_max - FOOTPRINT_M, \
+            f'{wp["name"]} が廊下の外か壁に近すぎる'
+        assert y_min + FOOTPRINT_M < wp['y'] < y_max - FOOTPRINT_M, \
+            f'{wp["name"]} が廊下の外か壁に近すぎる'
