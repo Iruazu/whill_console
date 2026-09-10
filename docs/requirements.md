@@ -77,7 +77,7 @@ Phase 1 で判明したこと: Nav2 の costmap は名前空間とノード名�
 `--check` は「差分なし」と嘘をつく。`--check` は**反映できなかったキーがあれば
 失敗する**ようにしてある。
 
-### Phase 2 — gateway と stackd
+### Phase 2 — gateway と stackd ✅ 完了（2026-09-10）
 
 `whill_gateway`（rclpy, WebSocket, JSON + binary）
 - 配信: costmap（RLE。**全量 `/…/costmap` と部分更新 `/…/costmap_updates` の両方**を
@@ -98,7 +98,17 @@ Phase 1 で判明したこと: Nav2 の costmap は名前空間とノード名�
 
 **受け入れ**: 別PC のブラウザから `ws://<lab-pc>:8765` に繋ぎ、mock 構成の costmap と pose が
 届く。stackd 経由で stop → start ができ、ログが流れる。ハートビート断で手動速度指令が
-ゼロになることを pytest で確認。
+ゼロになることを pytest で確認。→ **達成**
+
+Phase 2 で分かったこと:
+
+- Nav2 は costmap の全量を publish し続けない。gateway は全量を保持し、
+  接続時と購読変更時に配る必要がある（ADR-0002）
+- `websockets` ライブラリは apt 版（9.1）が Python 3.10 で壊れている。
+  aiohttp を使う（ADR-0003）
+- **mock に twist_mux が無く、車体がそもそも動いていなかった。** Nav2 が出す
+  `/cmd_vel` を誰も消費しておらず、goal は accept されるので気づきにくかった
+- 停止は親の終了だけで判断しない。プロセスグループが空になるまで段階を上げる
 
 ### Phase 3 — Web dev レイアウト
 

@@ -445,28 +445,96 @@ def list_topics(
 # ---- stack (stackd への薄いクライアント) ------------------------------------
 
 
+def _stackd_call(url: str, request: dict | None, *, follow: float = 0.0) -> None:
+    """stackd に 1 コマンド送り、応答を表示する。
+
+    `follow` 秒だけログを流し続ける。起動の様子を見たいので既定で少し待つ。
+    """
+    import asyncio
+
+    from whill_cli.stackd_client import StackdError, run_command
+
+    token = os.environ.get('WHILL_GATEWAY_TOKEN', '')
+    if not token:
+        console.print('[red]WHILL_GATEWAY_TOKEN が未設定[/red]')
+        raise typer.Exit(2)
+
+    def show(frame: dict) -> None:
+        kind = frame.get('type')
+        if kind == 'log':
+            # ログ本文に `[INFO]` のような角括弧が入るので markup を切る。
+            # 色は style で付ける（markup=False だと [red] が literal になる）。
+            style = 'red' if frame['stream'] == 'stderr' else None
+            console.print(frame['text'], markup=False, highlight=False, style=style)
+        elif kind == 'status':
+            uptime = frame.get('uptime')
+            console.print(f'[bold]状態[/bold] {frame["state"]}  pid={frame["pid"]}  '
+                          f'exit={frame["exit_code"]}  '
+                          f'uptime={f"{uptime:.0f}s" if uptime else "-"}')
+        elif kind == 'exited':
+            colour = 'red' if frame.get('failed') else 'green'
+            console.print(f'[{colour}]終了 exit_code={frame["exit_code"]}[/{colour}]')
+        elif kind == 'error':
+            console.print(f'[red]{frame["reason"]}[/red]')
+
+    try:
+        asyncio.run(run_command(url, token, request, follow=follow, on_frame=show))
+    except StackdError as exc:
+        console.print(f'[red]{exc}[/red]')
+        raise typer.Exit(1) from None
+
+
 @stack_app.command('status')
-def stack_status(url: str = typer.Option('http://127.0.0.1:8770', '--url')) -> None:
+def stack_status(url: str = typer.Option('ws://127.0.0.1:8770', '--url')) -> None:
     """stackd に現在の状態を問い合わせる。"""
-    _stackd_note(url)
+    _stackd_call(url, {'type': 'status'})
 
 
 @stack_app.command('start')
-def stack_start(url: str = typer.Option('http://127.0.0.1:8770', '--url')) -> None:
-    """stackd 経由で起動する。"""
-    _stackd_note(url)
+def stack_start(
+    url: str = typer.Option('ws://127.0.0.1:8770', '--url'),
+    robot: str = typer.Option('cr2-01', '--robot', '-r'),
+    mode: str = typer.Option('mock', '--mode', '-m'),
+    preset: str = typer.Option('', '--preset', '-p'),
+    bag: str = typer.Option('', '--bag'),
+    camera: bool = typer.Option(False, '--camera'),
+    follow: float = typer.Option(15.0, '--follow', '-f', help='ログを流す秒数'),
+) -> None:
+    """stackd 経由でスタックを起動する。"""
+    _stackd_call(url, {'type': 'start', 'robot': robot, 'mode': mode,
+                       'preset': preset, 'bag': bag, 'camera': camera},
+                 follow=follow)
 
 
 @stack_app.command('stop')
-def stack_stop(url: str = typer.Option('http://127.0.0.1:8770', '--url')) -> None:
-    """stackd 経由で停止する。"""
-    _stackd_note(url)
+def stack_stop(
+    url: str = typer.Option('ws://127.0.0.1:8770', '--url'),
+    follow: float = typer.Option(10.0, '--follow', '-f'),
+) -> None:
+    """stackd 経由でスタックを停止する。"""
+    _stackd_call(url, {'type': 'stop'}, follow=follow)
 
 
-def _stackd_note(url: str) -> None:
-    console.print(f'[yellow]stackd ({url}) は Phase 2 のスコープ。'
-                  f'いまは `whill run` を直接使うこと[/yellow]')
-    raise typer.Exit(3)
+@stack_app.command('restart')
+def stack_restart(
+    url: str = typer.Option('ws://127.0.0.1:8770', '--url'),
+    robot: str = typer.Option('cr2-01', '--robot', '-r'),
+    mode: str = typer.Option('mock', '--mode', '-m'),
+    follow: float = typer.Option(15.0, '--follow', '-f'),
+) -> None:
+    """停止してから起動し直す。"""
+    _stackd_call(url, {'type': 'restart', 'robot': robot, 'mode': mode},
+                 follow=follow)
+
+
+@stack_app.command('logs')
+def stack_logs(
+    url: str = typer.Option('ws://127.0.0.1:8770', '--url'),
+    limit: int = typer.Option(50, '--limit', '-n', help='直近の何行を出すか'),
+    follow: float = typer.Option(0.0, '--follow', '-f', help='そのあと何秒流し続けるか'),
+) -> None:
+    """直近のログを出す。--follow で流し続ける。"""
+    _stackd_call(url, {'type': 'logs', 'limit': limit}, follow=follow)
 
 
 def main() -> None:
