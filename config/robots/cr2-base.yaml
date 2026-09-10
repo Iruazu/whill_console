@@ -57,7 +57,13 @@ drivers:
       # できないので、publishes 側にも宣言しておく。
       - {topic: /imu/temperature, type: sensor_msgs/msg/Temperature, rate_hz: 1.0}
     telemetry:
-      - {name: yaw,       topic: /imu/data_rep145, field: __yaw_deg,  unit: deg, widget: heading, warn: null, crit: null, compare: none}
+      # 姿勢（yaw）は出さない。**このドライバは orientation を推定していない** —
+      # 実 bag の全 23509 通で orientation_covariance[0] = -1（REP-145 の
+      # 「未推定」表明）、四元数は単位のまま。既存スタックの EKF も同じ理由で
+      # orientation を skip している（ekf_odom.yaml の注記 (3)）。
+      # 出すと「常に yaw 0 度」を正しい値として表示することになる。
+      # 車体の向きは localizer の pose から出す（俯瞰図が描いている）。
+      - {name: yaw_rate,  topic: /imu/data_rep145, field: __yaw_rate_deg, unit: deg/s, widget: number, warn: null, crit: null, compare: none}
       - {name: imu_rate,  topic: /imu/data_rep145, field: __rate,     unit: Hz,  widget: number,  warn: 80.0, crit: 50.0, compare: below}
       - {name: temp,      topic: /imu/temperature, field: temperature, unit: degC, widget: number, warn: 60.0, crit: 75.0, compare: above}
 
@@ -74,15 +80,23 @@ drivers:
 
 # 派生テレメトリ（単一ドライバに属さないもの）。drivers パネルの最下段に出す。
 derived_telemetry:
-  - name: yaw_vs_ndt
+  - name: yaw_rate_vs_ndt
     description: >-
-      IMU の yaw と scan-to-map localizer の yaw の差。localization 劣化（TF 凍結 →
-      Nav2 abort）の早期検知に使う。実機で最も再発している故障モードなので既定で表示する。
+      ジャイロの yaw 角速度と scan-to-map localizer の yaw 変化率の乖離。
+      localization 劣化（TF 凍結 → Nav2 abort）の早期検知に使う。実機で最も
+      再発している故障モードなので既定で表示する。
+      **角度どうしではなく変化率どうしを比べる。** このドライバは orientation を
+      推定しないので「IMU の yaw」が存在せず、また変化率なら基準の推定が要らず、
+      TF 凍結という見たい故障そのものを直接見られる（ADR-0006）。
+      **回っていないときは何も言えない。** 止まっていれば両方 0 で、localizer が
+      凍結していても乖離は出ない。「乖離が小さい = 正しい」ではない。
     inputs: [/imu/data_rep145, /pcl_pose]
-    unit: deg
+    unit: deg/s
     widget: number
-    warn: 10.0
-    crit: 25.0
+    # 実測から決めた（ADR-0006）。健全な代表 bag 235 s で最大 3.06 deg/s、
+    # 旋回中に TF が凍結すると 15 deg/s 前後まで出る。そのあいだに置く。
+    warn: 5.0
+    crit: 10.0
     compare: above
 
 # モード別に起動するものの宣言。whill_cli の --mode がこれを引く。

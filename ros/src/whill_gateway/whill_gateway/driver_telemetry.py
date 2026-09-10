@@ -22,6 +22,7 @@ publisher 側がまちまちだが、**best-effort な購読は reliable な pub
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from typing import Any
 
@@ -33,14 +34,27 @@ from rclpy.qos import (
     QoSReliabilityPolicy,
 )
 
+from geometry_msgs.msg import PoseWithCovarianceStamped
+from sensor_msgs.msg import Imu
+
 from whill_gateway.telemetry_spec import (
     FIELD_RATE,
     TelemetryError,
     TelemetryStore,
     expected_drivers,
     extract,
+    load_derived,
     load_specs,
 )
+from whill_gateway.yaw_vs_ndt import YawRateVsNdt
+
+DERIVED_IMU_TOPIC = '/imu/data_rep145'
+DERIVED_NDT_TOPIC = '/pcl_pose'
+DERIVED_YAW_RATE = 'yaw_rate_vs_ndt'
+"""派生テレメトリの名前。`cr2-base.yaml` の `derived_telemetry` と揃えること。
+
+宣言に無い名前を計算しても、閾値も単位も付かないまま捨てられる。
+"""
 
 TELEMETRY_QOS = QoSProfile(
     reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -70,7 +84,9 @@ class DriverTelemetry:
         self._wall = wall_clock
 
         specs = load_specs(base, robot)
-        self.store = TelemetryStore(specs, expected_drivers(base, mode))
+        derived = load_derived(base)
+        self.store = TelemetryStore(specs, expected_drivers(base, mode), derived)
+        self._setup_derived(derived)
 
         types = _topic_types(base)
         # トピック単位で 1 回だけ購読する。同じトピックから複数の field を
@@ -92,6 +108,38 @@ class DriverTelemetry:
 
         node.get_logger().info(
             f'telemetry を {len(specs)} 件、{len(by_topic)} トピックから購読する')
+
+    def _setup_derived(self, derived: list) -> None:
+        """派生テレメトリの入力を購読する。
+
+        宣言に `yaw_rate_vs_ndt` が無ければ何もしない。宣言を消したのに
+        購読だけ残る、を作らない。
+        """
+        self.yaw_rate = None
+        if not any(spec.name == DERIVED_YAW_RATE for spec in derived):
+            return
+        self.yaw_rate = YawRateVsNdt()
+        node = self.node
+        node.create_subscription(
+            Imu, DERIVED_IMU_TOPIC, self._on_imu, TELEMETRY_QOS)
+        node.create_subscription(
+            PoseWithCovarianceStamped, DERIVED_NDT_TOPIC, self._on_ndt,
+            TELEMETRY_QOS)
+
+    def _on_imu(self, message: Imu) -> None:
+        # **stamp は header から取る。** 受信時刻で積分すると、bag 再生や
+        # 負荷で詰まったときに回転量がずれる。
+        self.yaw_rate.observe_imu(
+            _stamp(message), math.degrees(message.angular_velocity.z))
+
+    def _on_ndt(self, message: PoseWithCovarianceStamped) -> None:
+        q = message.pose.pose.orientation
+        yaw = math.degrees(math.atan2(2.0 * (q.w * q.z + q.x * q.y),
+                                      1.0 - 2.0 * (q.y * q.y + q.z * q.z)))
+        self.yaw_rate.observe_ndt(_stamp(message), yaw)
+        # 評価は pose が来たときにしか進まないので、そのたびに書き戻す。
+        self.store.set_value(
+            DERIVED_YAW_RATE, self.yaw_rate.value, self._now())
 
     def _now(self) -> float:
         return self._wall.now().nanoseconds / 1e9
@@ -115,6 +163,10 @@ class DriverTelemetry:
         `__rate` は時間そのものが変化なので、結局毎回流れる。
         """
         self.emit(self.frame())
+
+
+def _stamp(message: Any) -> float:
+    return message.header.stamp.sec + message.header.stamp.nanosec / 1e9
 
 
 def _message_class(type_name: str):

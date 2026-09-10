@@ -34,6 +34,22 @@ export function DriversPanel() {
       {telemetry.drivers.map((driver) => (
         <DriverCard key={driver.driver} driver={driver} />
       ))}
+
+      {/* 単一のドライバに属さないもの。最下段に別枠で出す。 */}
+      {telemetry.derived.length > 0 && (
+        <div className="derived" data-testid="derived">
+          {telemetry.derived.map((item) => (
+            <div
+              key={item.name}
+              className={`derived-row level-${item.level}`}
+              data-testid={`derived-${item.name}`}
+            >
+              <span className={`badge level-${item.level}`}>{LEVEL_MARK[item.level]}</span>
+              <Reading item={item} />
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   )
 }

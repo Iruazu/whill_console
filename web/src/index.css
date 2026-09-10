@@ -280,6 +280,10 @@ body {
 .reading.level-warn .reading-fill { background: var(--warn); }
 .reading.level-crit .reading-fill { background: var(--crit); }
 
+/* 派生テレメトリ。単一のドライバに属さないので、カードの下に別枠で置く。 */
+.derived { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
+.derived-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+
 .overview-controls {
   display: flex;
   align-items: center;

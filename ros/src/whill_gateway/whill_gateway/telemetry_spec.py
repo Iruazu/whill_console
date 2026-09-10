@@ -57,11 +57,14 @@ RATE_MAX_SAMPLES = 512
 
 FIELD_RATE = '__rate'
 FIELD_YAW_DEG = '__yaw_deg'
-PSEUDO_FIELDS = frozenset({FIELD_RATE, FIELD_YAW_DEG})
+FIELD_YAW_RATE_DEG = '__yaw_rate_deg'
+PSEUDO_FIELDS = frozenset({FIELD_RATE, FIELD_YAW_DEG, FIELD_YAW_RATE_DEG})
 """メッセージの中に無い計算値。宣言で `__` 始まりの `field` として書かれる。
 
-`__rate`    そのトピックの受信レートの**実測**（宣言値ではない）
-`__yaw_deg` quaternion から取り出した yaw を度で
+`__rate`          そのトピックの受信レートの**実測**（宣言値ではない）
+`__yaw_deg`       quaternion から取り出した yaw を度で。
+                  **姿勢が未推定なら None**（`orientation_covariance[0] < 0`）
+`__yaw_rate_deg`  `angular_velocity.z` を度/秒で
 """
 
 MIN_STALE_SEC = 3.0
@@ -198,6 +201,37 @@ def _apply_overrides(specs: list[TelemetrySpec], overrides: dict[str, Any]) -> N
             setattr(spec, key, None if value is None else float(value))
 
 
+DERIVED_DRIVER = 'derived'
+"""派生テレメトリの見かけ上の所属。
+
+単一のドライバに属さないので、drivers パネルでは最下段に別枠で出す。
+"""
+
+
+def load_derived(base: dict[str, Any]) -> list[TelemetrySpec]:
+    """`derived_telemetry` を読む。
+
+    購読はしない（複数トピックから計算するもの）。値は gateway 側が
+    `set_value` で入れる。
+    """
+    specs = []
+    for item in (base.get('derived_telemetry') or []):
+        specs.append(TelemetrySpec(
+            name=item['name'],
+            driver=DERIVED_DRIVER,
+            # 単一トピックに属さない。レート測定の対象にもしない。
+            topic='',
+            field=item['name'],
+            widget=item['widget'],
+            unit=item.get('unit'),
+            warn=item.get('warn'),
+            crit=item.get('crit'),
+            compare=item.get('compare', 'none'),
+            description=item.get('description', ''),
+        ))
+    return specs
+
+
 def expected_drivers(base: dict[str, Any], mode: str) -> set[str]:
     """そのモードで起動するはずのドライバ。
 
@@ -225,6 +259,8 @@ def extract(message: Any, field_name: str) -> float | None:
     """
     if field_name == FIELD_YAW_DEG:
         return _yaw_deg(message)
+    if field_name == FIELD_YAW_RATE_DEG:
+        return _yaw_rate_deg(message)
 
     current: Any = message
     for part in field_name.split('.'):
@@ -238,7 +274,16 @@ def extract(message: Any, field_name: str) -> float | None:
 
 
 def _yaw_deg(message: Any) -> float | None:
-    """quaternion から yaw を度で。`orientation` を持つメッセージ用。"""
+    """quaternion から yaw を度で。`orientation` を持つメッセージ用。
+
+    **姿勢が未推定なら None を返す。** `sensor_msgs/Imu` は
+    `orientation_covariance[0] < 0` で「姿勢は出していない」を表す規約で、
+    そのとき四元数は単位のまま置かれる。見ないと**「常に yaw 0 度」を
+    正しい値として表示する**ことになる（RT-USB-9AXIS-00 が実際にこれ）。
+    """
+    covariance = getattr(message, 'orientation_covariance', None)
+    if covariance is not None and not _orientation_provided(covariance):
+        return None
     q = getattr(message, 'orientation', None)
     if q is None:
         return None
@@ -248,6 +293,22 @@ def _yaw_deg(message: Any) -> float | None:
     except (AttributeError, TypeError):
         return None
     return math.degrees(yaw)
+
+
+def _orientation_provided(covariance: Any) -> bool:
+    try:
+        return float(covariance[0]) >= 0.0
+    except (TypeError, IndexError, ValueError):
+        return False
+
+
+def _yaw_rate_deg(message: Any) -> float | None:
+    """`angular_velocity.z` を度/秒で。"""
+    angular = getattr(message, 'angular_velocity', None)
+    z = getattr(angular, 'z', None)
+    if not isinstance(z, (int, float)) or isinstance(z, bool):
+        return None
+    return math.degrees(float(z))
 
 
 # ---- 受信の記録 -------------------------------------------------------------
@@ -291,10 +352,13 @@ class Reading:
 class TelemetryStore:
     """宣言ごとの現在値。時刻はすべて引数で受け取る。"""
 
-    def __init__(self, specs: list[TelemetrySpec], expected: set[str]) -> None:
+    def __init__(self, specs: list[TelemetrySpec], expected: set[str],
+                 derived: list[TelemetrySpec] | None = None) -> None:
         self.specs = specs
+        self.derived = derived or []
         self.expected = expected
-        self._readings: dict[str, Reading] = {s.name: Reading() for s in specs}
+        self._readings: dict[str, Reading] = {
+            s.name: Reading() for s in [*specs, *self.derived]}
         # レートはトピック単位。同じトピックを見る宣言が複数あっても 1 つで済む。
         self._rates: dict[str, RateTracker] = {}
         self._seen: set[str] = set()
@@ -388,5 +452,8 @@ class TelemetryStore:
         return {
             'type': protocol.MSG_TELEMETRY,
             'drivers': list(drivers.values()),
+            # 単一のドライバに属さないものは別枠。ドライバのカードに
+            # 紛れ込ませると、どのセンサの話か読み違える。
+            'derived': [self.item(spec, wall_sec) for spec in self.derived],
             'stamp': wall_sec,
         }
