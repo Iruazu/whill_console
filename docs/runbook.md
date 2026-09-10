@@ -92,6 +92,14 @@ whill tap --seconds 3 --apply-preset cautious -v
 # 変更ログ (受理も拒否も残る)
 ros2 topic echo /whill/param_changes
 
+# 手動操作とハートビート断の確認
+# --then-silent で「指令を止めたまま接続だけ維持する」状況を作れる
+whill manual --vx 0.25 --seconds 3 --then-silent 4
+ros2 topic echo /cmd_vel_teleop          # 別ターミナル
+
+# E-stop (作動すると Nav2 の goal も取り消される。解除しても自律走行は再開しない)
+whill manual --seconds 0 --estop
+
 # 個体一覧と TF の採寸状況
 whill robots
 
@@ -167,6 +175,8 @@ skip の理由がログに出る（全部 skip されて緑、を見逃さない
 | `param_set` が「走行中は変更できない」で拒否される | 仕様どおり。`locked_while_moving` のパラメータは走行中に変えられない。停止してから。 |
 | `param_set` が「再起動が必要」で拒否される | `live: false` のパラメータ。`whill params show <key>` で確認できる。ノードを再起動すること。 |
 | UI の値と実際の Nav2 の値が違う | `params` フレームの `mismatches` を見る。`whill tap --stream params -v` で件数が出る。 |
+| 手動操作が車体に届かない | `ros2 topic info /cmd_vel_teleop` で Subscription count を見る。0 なら twist_mux が居ない。mock では bringup が起動する。 |
+| E-stop を解除しても走り出さない | 仕様どおり。E-stop は Nav2 の goal を取り消すので、再開には改めてゴールを与えること。 |
 | gateway が `address already in use` で落ちる | 前回のプロセスが残っている。`ss -ltnp \| grep 8765` で PID を見て落とす。 |
 | `mode=real` / `mode=sim` で例外が出る | 未配線。仕様どおり（黙って起動しないより落とす）。`docs/open-questions.md` K5。 |
 

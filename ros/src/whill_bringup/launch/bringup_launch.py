@@ -231,6 +231,24 @@ def _setup(context, *args, **kwargs):
             }.items(),
         ))
 
+    # ---- 速度の調停 --------------------------------------------------------
+    if mode == 'mock':
+        # twist_mux を入れないと、gateway の手動操作と E-stop が下流に届かない。
+        # Nav2 の velocity_smoother が出す /cmd_vel を誰も消費しないので、
+        # 入れる前は mock の車体がそもそも動いていなかった。
+        actions.append(Node(
+            package='twist_mux', executable='twist_mux', name='twist_mux',
+            output='screen',
+            parameters=[
+                os.path.join(get_package_share_directory('whill_bringup'),
+                             'config', 'twist_mux_mock.yaml'),
+                {'use_sim_time': use_sim_time},
+            ],
+            # 出力をモックドライバの入力へ。cr2-base.yaml の
+            # whill_serial.subscribes と一致していること。
+            remappings=[('cmd_vel_out', '/whill/controller/cmd_vel')],
+        ))
+
     # ---- gateway -----------------------------------------------------------
     if start_gateway:
         actions.append(Node(

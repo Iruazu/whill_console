@@ -245,6 +245,48 @@ def _parse_value(raw: str):
         return raw
 
 
+@app.command('manual')
+def manual_drive(
+    host: str = typer.Option('127.0.0.1', '--host'),
+    port: int = typer.Option(8765, '--port'),
+    vx: float = typer.Option(0.2, '--vx', help='前進速度 m/s'),
+    wz: float = typer.Option(0.0, '--wz', help='旋回速度 rad/s'),
+    seconds: float = typer.Option(3.0, '--seconds', '-s', help='何秒指令を出すか'),
+    then_silent: float = typer.Option(
+        0.0, '--then-silent',
+        help='指令を止めてから何秒つないだままにするか（ハートビート断の確認用）'),
+    estop: bool = typer.Option(False, '--estop', help='最後に E-stop を送る'),
+) -> None:
+    """手動速度指令を出す（ハートビート付き）。
+
+    ハートビート断で速度がゼロになることを実機/mock で確かめるための道具。
+    `--then-silent` で「指令を止めたまま接続だけ維持する」状況を作れる。
+
+    別ターミナルで `ros2 topic echo /cmd_vel_teleop` を見ること。
+    """
+    import asyncio
+
+    from whill_cli.tap import TapError
+    from whill_cli.tap import manual as run_manual
+
+    token = os.environ.get('WHILL_GATEWAY_TOKEN', '')
+    if not token:
+        console.print('[red]WHILL_GATEWAY_TOKEN が未設定[/red]')
+        raise typer.Exit(2)
+
+    console.print(f'vx={vx} wz={wz} を {seconds:.1f} 秒、'
+                  f'その後 {then_silent:.1f} 秒沈黙'
+                  + ('、最後に E-stop' if estop else ''))
+    try:
+        asyncio.run(run_manual(
+            f'ws://{host}:{port}', token, vx=vx, wz=wz,
+            seconds=seconds, then_silent=then_silent, estop=estop))
+    except TapError as exc:
+        console.print(f'[red]{exc}[/red]')
+        raise typer.Exit(1) from None
+    console.print('[green]完了[/green]')
+
+
 # ---- params ----------------------------------------------------------------
 
 
