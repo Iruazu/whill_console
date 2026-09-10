@@ -80,7 +80,8 @@ class ParamSpec:
                 raise RegistryError(
                     f'{self.key}: 要素数が {len(self.elements)} ではない '
                     f'(受信値 {len(value)} 個)')
-            for element, v in zip(self.elements, value):
+            # strict=True: 長さは直前で検査済みだが、黙って切り捨てないよう明示する
+            for element, v in zip(self.elements, value, strict=True):
                 self._check_scalar(v, element.get('range'),
                                    label=element.get('label', '?'))
             return

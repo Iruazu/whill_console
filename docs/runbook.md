@@ -100,6 +100,24 @@ whill topics --mode mock
 ```
 
 スクリーンショットは `docs/screenshots/` に出る。UI を変えた PR には必ず添付する。
+CI も同じものを撮って artifact `screenshots` に上げるので、そこから拾ってもよい。
+
+`scripts/test.sh` は CI (`.github/workflows/ci.yml`) と同じ内容を走らせる。
+ローカルで緑なのに CI で赤い、という状態を作らないため、片方に検査を足したら
+もう片方にも足すこと。
+
+CI は 3 ジョブに分かれる。壊れた場所が名前で分かるようにしてある:
+
+| ジョブ | 内容 | ROS |
+|---|---|---|
+| `services` | config/ の検証、CLI のテスト、ruff | 不要 |
+| `web` | 型検査、vitest、Playwright スクリーンショット | 不要 |
+| `ros` | registry、ParameterDescriptor、Nav2 params 生成 | `ros:humble-ros-base` コンテナ |
+
+`ros` ジョブには既存スタック (`whill_lab0_ros2`) が無いので、その
+`nav2_params.yaml` に依存するテストは skip される。`-rs` を付けてあるので
+skip の理由がログに出る（全部 skip されて緑、を見逃さないため）。
+テンプレートの場所は `WHILL_NAV2_TEMPLATE` で差し替えられる。
 
 ## 落ちたとき
 

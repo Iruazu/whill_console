@@ -115,7 +115,7 @@ def registry_module():
     import 失敗を致命的にしない。
     """
     try:
-        import whill_params.registry as module  # noqa: PLC0415
+        import whill_params.registry as module
         return module
     except ImportError:
         return None

@@ -34,16 +34,22 @@ run() {
 if [ "$target" = "all" ] || [ "$target" = "services" ]; then
   run "services (config / CLI)" \
     env -C "${ROOT}/services" uv run pytest "${ROOT}/tests/services" -q
+  # CI と同じ規則で lint する。ローカルで緑なのに CI で赤い、を作らない。
+  run "services (lint)" \
+    env -C "${ROOT}/services" uv run ruff check .
 fi
 
 if [ "$target" = "all" ] || [ "$target" = "ros" ]; then
   # whill_params と rcl_interfaces は colcon ws / ROS から来るので、uv の venv では
   # なくシステム python3 で走らせる。env.sh が両方 source 済み。
+  # -rs: skip された理由を出す。既存スタックが無い環境で全部 skip されて
+  # 緑になるのを見逃さないため。
   run "ros (registry / descriptors)" \
-    python3 -m pytest "${ROOT}/tests/ros" -q
+    python3 -m pytest "${ROOT}/tests/ros" -q -rs
 fi
 
 if [ "$target" = "all" ] || [ "$target" = "web" ]; then
+  run "web (typecheck)" env -C "${ROOT}/web" pnpm exec tsc -b
   run "web (vitest)" env -C "${ROOT}/web" pnpm exec vitest run
   run "web (playwright スクリーンショット)" env -C "${ROOT}/web" pnpm exec playwright test
 fi

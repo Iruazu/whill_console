@@ -11,6 +11,7 @@ skip したことが見えるよう、理由を明示する。
 from __future__ import annotations
 
 import copy
+import os
 from pathlib import Path
 
 import pytest
@@ -23,8 +24,11 @@ from whill_params.generate_nav2_params import (
     render,
 )
 
-TEMPLATE = Path(
-    '~/whill_lab0_ros2/src/whill_navigation/config/nav2_params.yaml').expanduser()
+# bringup が使うのと同じ環境変数で差し替えられるようにする。CI では
+# 既存スタックが無いので、テンプレート依存のテストは skip される。
+TEMPLATE = Path(os.environ.get(
+    'WHILL_NAV2_TEMPLATE',
+    '~/whill_lab0_ros2/src/whill_navigation/config/nav2_params.yaml')).expanduser()
 
 requires_template = pytest.mark.skipif(
     not TEMPLATE.is_file(),

@@ -42,6 +42,22 @@ python-preference = "only-system"
 line-length = 100
 target-version = "py310"
 
+# 規則は明示する。既定の select に頼ると、ruff のバージョンが上がったときに
+# CI が「コードを触っていないのに赤い」状態になる。
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "RUF", "PLW"]
+ignore = [
+    # 日本語コメントを含む行は英語より文字数が少なくても幅を食う。
+    # 折り返しの都合で 100 を数文字超えることを許す。
+    "E501",
+    # 全角括弧・全角コロン等を「紛らわしい」と警告する規則。本リポは
+    # コメントと docstring を日本語で書く方針なので全部踏む。日本語の文中で
+    # 半角括弧を使うほうが読みにくいため、規則のほうを外す。
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["../tests/services"]
 asyncio_mode = "auto"
