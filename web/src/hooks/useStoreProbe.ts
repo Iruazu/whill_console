@@ -45,6 +45,14 @@ export function useStoreProbe(): void {
           finished: state.replay.finished,
         },
         dispatch: state.dispatch,
+        // 名前 → 現在値。live テストから「実測が出ているか」を見るため。
+        telemetryItems: state.telemetry
+          ? Object.fromEntries(
+              state.telemetry.drivers.flatMap((d) =>
+                d.items.map((i) => [i.name, i.value]),
+              ),
+            )
+          : null,
         waypoints: state.waypoints.map((w) => w.name),
         tfFrames: state.tf ? Object.keys(state.tf.parents).length : 0,
         unhandled: state.unhandledFrames,

@@ -6,6 +6,7 @@ import { useStoreProbe } from './hooks/useStoreProbe'
 import { loadToken } from './lib/token'
 import { Overview2D } from './panels/Overview2D'
 import { DispatchPanel } from './panels/DispatchPanel'
+import { DriversPanel } from './panels/DriversPanel'
 import { ParamsPanel } from './panels/ParamsPanel'
 import { ReplayBar } from './panels/ReplayBar'
 import { TokenGate } from './panels/TokenGate'
@@ -42,6 +43,8 @@ export function App() {
         <div className="side">
           {/* dispatch_node が居るモードでのみ描かれる。 */}
           <DispatchPanel send={send} />
+          {/* telemetry 宣言があるモードでのみ描かれる。 */}
+          <DriversPanel />
           <ParamsPanel send={send} />
         </div>
       </div>
