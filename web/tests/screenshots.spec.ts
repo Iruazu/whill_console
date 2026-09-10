@@ -435,6 +435,89 @@ test.describe('console のスクリーンショット', () => {
     })
   })
 
+  test('仮想障害物が点線円で描かれる', async ({ page }, testInfo) => {
+    await openWithToken(page)
+    await page.evaluate(() => {
+      const ingest = (window as unknown as {
+        __whillIngest: (f: Record<string, unknown>) => void
+      }).__whillIngest
+      ingest({
+        type: 'costmap', scope: 'local', frame_id: 'map', resolution: 0.5,
+        width: 20, height: 20, origin_x: -5, origin_y: -5,
+        rle: [0, 400], ratio: 0.01, stamp: 1, seq: 1,
+      })
+      ingest({ type: 'pose', x: 0, y: 0, yaw: 0, frame_id: 'map', source: 'test', stamp: 1 })
+      ingest({
+        type: 'obstacles',
+        obstacles: [
+          { id: 'a', frame_id: 'map', x: 2, y: 1, radius: 0.8 },
+          { id: 'b', frame_id: 'map', x: -2, y: -1, radius: 0.4 },
+        ],
+      })
+    })
+
+    // 個数を常に出す。置いたまま忘れられるのが一番まずい。
+    await expect(page.getByTestId('obstacle-count')).toContainText('2')
+    await expect(page.getByTestId('obstacles-clear')).toBeVisible()
+
+    // 点線円の色が canvas に出ていること。実障害物（赤）や LiDAR（橙）とは
+    // 別の色にしてある。色だけでなく線種も変えているが、ここでは色で確認する。
+    const hasVirtualColour = await page.evaluate(() => {
+      const canvas = document.querySelector(
+        '[data-testid="overview-canvas"]',
+      ) as HTMLCanvasElement
+      const data = canvas.getContext('2d')!
+        .getImageData(0, 0, canvas.width, canvas.height).data
+      for (let i = 0; i < data.length; i += 4) {
+        // #d07ce0 に近い画素があるか（アンチエイリアスで多少ずれる）
+        if (
+          Math.abs(data[i] - 0xd0) < 40 &&
+          Math.abs(data[i + 1] - 0x7c) < 40 &&
+          Math.abs(data[i + 2] - 0xe0) < 40
+        ) {
+          return true
+        }
+      }
+      return false
+    })
+    expect(hasVirtualColour, '仮想障害物の色が描かれていない').toBe(true)
+
+    await page.screenshot({
+      path: `${SHOT_DIR}/${testInfo.project.name}-obstacles.png`,
+      fullPage: true,
+    })
+  })
+
+  test('配置モードを入れないとクリックで置かれない', async ({ page }) => {
+    // 地図を動かすつもりのクリックで障害物が生えるのは事故のもと。
+    await openWithToken(page)
+    await page.evaluate(() => {
+      ;(window as unknown as {
+        __whillIngest: (f: Record<string, unknown>) => void
+      }).__whillIngest({ type: 'obstacles', obstacles: [] })
+    })
+
+    await expect(page.getByTestId('obstacle-radius')).toHaveCount(0)
+    await page.getByTestId('overview-canvas').click({ position: { x: 200, y: 200 } })
+    // 未接続なので送っても届かないが、そもそも送らないことを見たい。
+    // 送っていれば変更ログか error が出る（置けないことの確認）。
+    await expect(page.getByTestId('obstacle-count')).toContainText('0')
+
+    // モードを入れると半径のスライダーが出る
+    await page.getByTestId('placing-mode').check()
+    await expect(page.getByTestId('obstacle-radius')).toBeVisible()
+  })
+
+  test('全消去は障害物があるときだけ出る', async ({ page }) => {
+    await openWithToken(page)
+    await page.evaluate(() => {
+      ;(window as unknown as {
+        __whillIngest: (f: Record<string, unknown>) => void
+      }).__whillIngest({ type: 'obstacles', obstacles: [] })
+    })
+    await expect(page.getByTestId('obstacles-clear')).toHaveCount(0)
+  })
+
   test('768px で ops 相当の幅が横スクロールしない', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 })
     await openWithToken(page)

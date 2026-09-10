@@ -10,6 +10,7 @@ import type {
   ScanFrame,
   StackStatus,
   TfSummary,
+  VirtualObstacle,
 } from './types'
 
 /** gateway から届いたフレームを、アプリの状態に落とす。
@@ -35,6 +36,8 @@ export interface FrameState {
   pose: PoseFrame | null
   path: PathFrame | null
   scan: ScanFrame | null
+  /** いま置かれている仮想障害物。gateway が全量で配る。 */
+  obstacles: VirtualObstacle[]
   status: StackStatus | null
   params: ParamSpec[]
   /** registry と実ノードの値がずれているもの。異常なので隠さない。 */
@@ -66,6 +69,7 @@ export const emptyFrameState = (): FrameState => ({
   pose: null,
   path: null,
   scan: null,
+  obstacles: [],
   status: null,
   params: [],
   mismatches: [],
@@ -219,6 +223,24 @@ export function applyFrame(
             ),
             stamp: num(frame.stamp),
           },
+        },
+      }
+
+    case 'obstacles':
+      return {
+        handled: true,
+        state: {
+          ...state,
+          receivedAt: stamp,
+          // 全量置換。差分にすると UI と costmap の状態がずれたときに
+          // 復旧できない（gateway 側も同じ方針）。
+          obstacles: ((frame.obstacles as WireFrame[]) ?? []).map((raw) => ({
+            id: str(raw.id),
+            frameId: str(raw.frame_id, 'map'),
+            x: num(raw.x),
+            y: num(raw.y),
+            radius: num(raw.radius),
+          })),
         },
       }
 

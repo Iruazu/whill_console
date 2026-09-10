@@ -325,3 +325,38 @@ describe('paramRevision', () => {
     expect(state.paramRevision['c.d']).toBe(1)
   })
 })
+
+describe('仮想障害物', () => {
+  it('全量で置き換える', () => {
+    let state = apply(emptyFrameState(), {
+      type: 'obstacles',
+      obstacles: [
+        { id: 'a', frame_id: 'map', x: 1, y: 2, radius: 0.5 },
+        { id: 'b', frame_id: 'map', x: 3, y: 4, radius: 1.0 },
+      ],
+    })
+    expect(state.obstacles.map((o) => o.id)).toEqual(['a', 'b'])
+
+    // 差分にすると UI と costmap の状態がずれたときに復旧できない
+    state = apply(state, { type: 'obstacles', obstacles: [] })
+    expect(state.obstacles).toEqual([])
+  })
+
+  it('snake_case を camelCase に直す', () => {
+    const state = apply(emptyFrameState(), {
+      type: 'obstacles',
+      obstacles: [{ id: 'a', frame_id: 'map', x: 1.5, y: -2.5, radius: 0.75 }],
+    })
+    expect(state.obstacles[0]).toEqual({
+      id: 'a', frameId: 'map', x: 1.5, y: -2.5, radius: 0.75,
+    })
+  })
+
+  it('frame_id が無ければ map とみなす', () => {
+    const state = apply(emptyFrameState(), {
+      type: 'obstacles',
+      obstacles: [{ id: 'a', x: 0, y: 0, radius: 0.5 }],
+    })
+    expect(state.obstacles[0].frameId).toBe('map')
+  })
+})

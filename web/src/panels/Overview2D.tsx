@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import {
+  MAX_OBSTACLES,
+  MAX_RADIUS_M,
+  MIN_RADIUS_M,
+  clampRadius,
+  findObstacleAt,
+  newObstacleId,
+} from '../lib/obstacles'
 import { costmapToImageData, renderScene } from '../lib/render'
 import { canvasToWorld, clampZoom, defaultView } from '../lib/transform'
 import type { ViewState } from '../lib/transform'
@@ -19,16 +27,26 @@ import { useConsoleStore } from '../state/store'
  *  local は 2 Hz で部分更新が来る前提なので、5 秒は明らかに異常。 */
 const COSTMAP_STALE_MS = 5000
 
-export function Overview2D() {
+export interface Overview2DProps {
+  /** gateway へフレームを送る。未接続なら false を返す。 */
+  send: (frame: Record<string, unknown>) => boolean
+}
+
+export function Overview2D({ send }: Overview2DProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [view, setView] = useState<ViewState>(defaultView)
   const [size, setSize] = useState({ width: 800, height: 600 })
+  // **配置モードのトグル。** 常時クリックで置けるようにしない。
+  // 地図を動かすつもりのクリックで障害物が生えるのは事故のもと。
+  const [placing, setPlacing] = useState(false)
+  const [radius, setRadius] = useState(0.6)
 
   const costmaps = useConsoleStore((s) => s.costmaps)
   const pose = useConsoleStore((s) => s.pose)
   const path = useConsoleStore((s) => s.path)
   const scan = useConsoleStore((s) => s.scan)
+  const obstacles = useConsoleStore((s) => s.obstacles)
   const receivedAt = useConsoleStore((s) => s.receivedAt)
   const followRobot = useConsoleStore((s) => s.followRobot)
   const headingUp = useConsoleStore((s) => s.headingUp)
@@ -93,13 +111,14 @@ export function Overview2D() {
         pose,
         path,
         scan,
+        obstacles,
         // 全量と部分更新のどちらが来ても「新しい」。全量だけを受けた直後に
         // 「古い」と判定して薄く描く不具合を踏んだので両方を見る。
         costmapStale: isStale(receivedAt, COSTMAP_KINDS, Date.now(), COSTMAP_STALE_MS),
       },
       { view, viewport: size, costmapImage },
     )
-  }, [costmap, costmapImage, pose, path, scan, view, size, receivedAt])
+  }, [costmap, costmapImage, pose, path, scan, obstacles, view, size, receivedAt])
 
   // ---- 操作 ----------------------------------------------------------------
 
@@ -143,15 +162,40 @@ export function Overview2D() {
     }))
   }
 
-  const onDoubleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    // Phase 4 の仮想障害物はここから座標を取る。いまは中心を合わせるだけ。
+  const worldAt = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect()
-    const world = canvasToWorld(
+    return canvasToWorld(
       event.clientX - rect.left,
       event.clientY - rect.top,
       view,
       size,
     )
+  }
+
+  const onClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!placing) return
+    const world = worldAt(event)
+
+    // 既にあるものをクリックしたら消す。置くのと消すのを別モードにすると
+    // 「消したいのに置いてしまう」が起きる。
+    const hit = findObstacleAt(obstacles, world.x, world.y)
+    if (hit) {
+      send({ type: 'virtual_obstacles', action: 'remove', id: hit.id })
+      return
+    }
+
+    if (obstacles.length >= MAX_OBSTACLES) return
+    send({
+      type: 'virtual_obstacles',
+      action: 'add',
+      obstacle: { id: newObstacleId(), frame_id: 'map', x: world.x, y: world.y, radius },
+    })
+  }
+
+  const onDoubleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    // 配置モード中は中心合わせをしない。置いた直後に画面が飛ぶと使いにくい。
+    if (placing) return
+    const world = worldAt(event)
     setView((current) => ({ ...current, centerX: world.x, centerY: world.y }))
   }
 
@@ -187,16 +231,65 @@ export function Overview2D() {
           {costmap ? ` · ${costmap.width}×${costmap.height}` : ''}
         </span>
       </div>
+
+      <div className="overview-controls">
+        <label>
+          <input
+            type="checkbox"
+            checked={placing}
+            onChange={(e) => setPlacing(e.target.checked)}
+            data-testid="placing-mode"
+          />{' '}
+          仮想障害物を置く
+        </label>
+        {placing && (
+          <label className="radius-control">
+            半径
+            <input
+              type="range"
+              min={MIN_RADIUS_M}
+              max={MAX_RADIUS_M}
+              step={0.05}
+              value={radius}
+              onChange={(e) => setRadius(clampRadius(Number(e.target.value)))}
+              data-testid="obstacle-radius"
+            />
+            <span>{radius.toFixed(2)} m</span>
+          </label>
+        )}
+        {/* 置いたまま忘れられるのが一番まずい。個数は常に出す。 */}
+        <span
+          className={`badge${obstacles.length > 0 ? ' has-obstacles' : ''}`}
+          data-testid="obstacle-count"
+        >
+          仮想障害物 {obstacles.length}
+        </span>
+        {obstacles.length > 0 && (
+          <button
+            type="button"
+            onClick={() => send({ type: 'virtual_obstacles', action: 'clear' })}
+            data-testid="obstacles-clear"
+          >
+            全消去
+          </button>
+        )}
+      </div>
       <div className="overview-canvas" ref={containerRef}>
         <canvas
           ref={canvasRef}
           data-testid="overview-canvas"
-          style={{ width: '100%', height: '100%', touchAction: 'none' }}
+          style={{
+            width: '100%',
+            height: '100%',
+            touchAction: 'none',
+            cursor: placing ? 'crosshair' : 'grab',
+          }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
           onWheel={onWheel}
+          onClick={onClick}
           onDoubleClick={onDoubleClick}
         />
         {!hasMap && (
