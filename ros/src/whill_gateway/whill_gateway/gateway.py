@@ -34,8 +34,11 @@ from rclpy.node import Node
 
 from geometry_msgs.msg import Twist
 
+from action_msgs.srv import CancelGoal
+
 from whill_gateway import protocol
 from whill_gateway.param_bridge import MovingWatch, ParamBridge
+from whill_gateway.safety import ManualControl
 from whill_gateway.server import Client, GatewayServer
 from whill_gateway.telemetry import Telemetry
 from whill_params import registry as reg
@@ -69,8 +72,7 @@ class Gateway(Node):
         self._loop: asyncio.AbstractEventLoop | None = None
         self.server: GatewayServer | None = None
 
-        # #12 で埋める。ここでは status に載せるためだけに持つ。
-        self.estop = False
+        # nav_active は Nav2 の lifecycle 状態。#13 以降で埋める。
         self.nav_active = False
 
         self.telemetry = Telemetry(
@@ -90,6 +92,26 @@ class Gateway(Node):
             loop_getter=lambda: self._loop,
             moving_watch=self.moving,
         )
+
+        # ---- 安全 ----------------------------------------------------------
+        # gateway は twist_mux の teleop スロット（優先度 50）に書く。
+        # Layer D（優先度 100）を迂回しないので、歩行者検知の停止を
+        # 操作者が上書きすることはできない。
+        self.manual = ManualControl(
+            heartbeat_timeout=float(
+                self.get_parameter('manual_heartbeat_timeout').value),
+            zero_hold=float(self.get_parameter('manual_zero_hold').value),
+        )
+        self.manual_pub = self.create_publisher(Twist, '/cmd_vel_teleop', 10)
+        self._cancel_nav = self.create_client(
+            CancelGoal, '/navigate_to_pose/_action/cancel_goal')
+        self._last_manual_reason = 'idle'
+
+        # **ROS のタイマーで回す。** asyncio 側に置くと、WebSocket の処理が
+        # 詰まったときに一緒に止まる。Wi-Fi が切れて WebSocket が黙るのは、
+        # まさにゼロを出さなければならない状況（設計原則 4）。
+        manual_period = 1.0 / float(self.get_parameter('manual_publish_rate').value)
+        self.create_timer(manual_period, self._tick_manual)
 
         self.create_timer(STATUS_PERIOD_SEC, self._publish_status)
         self.create_timer(TF_SUMMARY_PERIOD_SEC, self.telemetry.publish_tf_summary)
@@ -129,6 +151,45 @@ class Gateway(Node):
             )
         return SetParametersResult(successful=True)
 
+    def _tick_manual(self) -> None:
+        """手動速度指令とゼロを出す。ROS タイマーから毎周期。"""
+        now = self.get_clock().now().nanoseconds / 1e9
+        command = self.manual.output(now)
+
+        if command.reason != self._last_manual_reason:
+            # 状態が変わったときだけログと配信をする。毎周期流すと
+            # 20 Hz で同じ内容が WebSocket を埋める。
+            self._last_manual_reason = command.reason
+            if command.reason == 'heartbeat_lost':
+                self.get_logger().warning(
+                    'ハートビート断。手動速度指令をゼロにする')
+            self._publish_status()
+
+        if not command.publish:
+            return
+
+        twist = Twist()
+        twist.linear.x = command.vx
+        twist.angular.z = command.wz
+        self.manual_pub.publish(twist)
+
+    def _cancel_navigation(self) -> None:
+        """E-stop 時に Nav2 の goal を取り消す。
+
+        ゼロを出すだけでも twist_mux の優先度で自律走行は止まるが、それだけだと
+        **E-stop を解除した瞬間に走り出す**。goal を取り消しておけば、
+        再開には明示的な指令が要る。
+
+        goal_id を空にすると「全ての goal」を意味する。届かなくても
+        E-stop 自体は成立している（ゼロを出し続けている）ので、
+        best-effort でよい。
+        """
+        if not self._cancel_nav.service_is_ready():
+            self.get_logger().warning(
+                'Nav2 の cancel_goal に届かない。速度ゼロは出し続けている')
+            return
+        self._cancel_nav.call_async(CancelGoal.Request())
+
     def _on_cmd_vel(self, msg: Twist) -> None:
         self.moving.observe(msg.linear.x, msg.angular.z,
                             self.get_clock().now().nanoseconds / 1e9)
@@ -139,7 +200,7 @@ class Gateway(Node):
             robot_id=self.robot_id,
             mode=self.mode,
             nav_active=self.nav_active,
-            estop=self.estop,
+            estop=self.manual.estop,
             clients=server.clients if server else 0,
             stamp=self.get_clock().now().nanoseconds / 1e9,
             preset=self.registry.applied_preset,
@@ -154,8 +215,37 @@ class Gateway(Node):
         黙って捨てると UI 側が「送ったのに効かない」理由を追えない。
         """
         kind = message['type']
+        now = self.get_clock().now().nanoseconds / 1e9
+
         if kind == protocol.MSG_HEARTBEAT:
-            # #12 でハートビート監視に繋ぐ。いまは受理だけする。
+            self.manual.heartbeat(now)
+            return
+
+        if kind == protocol.MSG_MANUAL_VEL:
+            if message.get('release'):
+                self.manual.release()
+                self._publish_status()
+                return
+            vx = float(protocol.require(message, 'vx', (int, float)))
+            wz = float(protocol.require(message, 'wz', (int, float)))
+            if self.manual.estop:
+                raise protocol.ProtocolError('E-stop 中は手動操作を受け付けない')
+            self.manual.command(vx, wz, now)
+            return
+
+        if kind == protocol.MSG_ESTOP:
+            engage = message.get('engage', True)
+            if not isinstance(engage, bool):
+                raise protocol.ProtocolError('estop: engage が bool でない')
+            if engage:
+                self.manual.engage_estop(now)
+                self._cancel_navigation()
+                self.get_logger().warning(f'E-stop 作動 ({client.remote})')
+            else:
+                self.manual.release_estop()
+                self.get_logger().warning(f'E-stop 解除 ({client.remote})')
+            # 1 人が押したら全員の画面で分かること。
+            self._publish_status()
             return
 
         if kind == protocol.MSG_PARAM_SET:
@@ -199,7 +289,7 @@ class Gateway(Node):
             robot_id=self.robot_id,
             mode=self.mode,
             nav_active=self.nav_active,
-            estop=self.estop,
+            estop=self.manual.estop,
             clients=server.clients if server else 1,
             stamp=self.get_clock().now().nanoseconds / 1e9,
             preset=self.registry.applied_preset,

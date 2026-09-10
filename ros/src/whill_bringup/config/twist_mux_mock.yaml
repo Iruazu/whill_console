@@ -1,0 +1,39 @@
+# mock 専用の twist_mux 設定。
+#
+# 優先度は既存 whill_safety/config/twist_mux.yaml と同じ意図:
+#   safety     100  failsafe (Layer D)。誰にも上書きされない
+#   teleop      50  gateway の手動操作と E-stop。Nav2 には勝つが safety には負ける
+#   navigation  10  Nav2
+#
+# **実機とは入力トピックが 1 つ違う。** 実機の chain は
+#
+#   controller_server -> /cmd_vel_nav -> twist_mux -> /cmd_vel -> velocity_smoother
+#                                                                  -> /whill/controller/cmd_vel
+#
+# なのに対し、mock は nav2_bringup の navigation_launch.py をそのまま使うので
+# velocity_smoother が先に入り、その出力 /cmd_vel が twist_mux の navigation
+# 入力になる:
+#
+#   controller_server -> /cmd_vel_nav -> velocity_smoother -> /cmd_vel
+#                                                              -> twist_mux
+#                                                              -> /whill/controller/cmd_vel
+#
+# 違いの影響は「E-stop のゼロが velocity_smoother を通らない」こと。mock では
+# 即座に止まり、実機では減速カーブを通る。E-stop としては mock のほうが
+# 厳しいので、上位の検証には支障がない。この差は docs/open-questions.md に
+# 登録してあり、実機配線 (mode=real) の実装時に解消する。
+twist_mux:
+  ros__parameters:
+    topics:
+      safety:
+        topic: /cmd_vel_safety
+        timeout: 0.5
+        priority: 100
+      teleop:
+        topic: /cmd_vel_teleop
+        timeout: 0.5
+        priority: 50
+      navigation:
+        topic: /cmd_vel
+        timeout: 0.5
+        priority: 10

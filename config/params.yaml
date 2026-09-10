@@ -445,6 +445,33 @@ params:
       遅延の実測値が大きくても安易に伸ばさない。
 
   - node: whill_gateway
+    name: manual_zero_hold
+    type: double
+    default: 2.0
+    range: {min: 0.5, max: 10.0, step: 0.5}
+    unit: s
+    live: false
+    safety_class: locked_while_moving
+    description: >-
+      ハートビート断のあと、速度ゼロを出し続ける時間。ゼロを 1 回出して黙ると、
+      下流が最後の値を保持している場合に動き続ける。既存 twist_mux の入力
+      タイムアウト 0.5 s より十分長く取ること。短いと gateway が黙るのと
+      twist_mux がスロットを落とすのが競合し、Nav2 の指令が一瞬通り抜ける。
+
+  - node: whill_gateway
+    name: manual_publish_rate
+    type: double
+    default: 20.0
+    range: {min: 5.0, max: 50.0, step: 5.0}
+    unit: Hz
+    live: false
+    safety_class: locked_while_moving
+    description: >-
+      手動速度指令とゼロを publish する周期。既存 whill_safety の failsafe が
+      20 Hz なのに合わせてある。下げると、ハートビート断からゼロが下流に
+      届くまでの遅れがそのぶん増える。
+
+  - node: whill_gateway
     name: costmap_publish_rate
     type: double
     default: 2.0

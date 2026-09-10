@@ -114,3 +114,41 @@ def summarize(frame: dict[str, Any]) -> str:
     if kind == 'error':
         return f"error    {frame['reason']}"
     return str(kind)
+
+
+async def manual(url: str, token: str, *, vx: float, wz: float,
+                 seconds: float, then_silent: float = 0.0,
+                 estop: bool = False) -> None:
+    """手動速度指令をハートビート付きで出す。
+
+    ハートビートは指令より速く送る。指令と同じ周期にすると、1 通落ちただけで
+    断とみなされる。
+    """
+    import websockets
+
+    try:
+        connection = await asyncio.wait_for(websockets.connect(url), 10)
+    except Exception as exc:
+        raise TapError(f'接続できない: {exc}') from exc
+
+    async with connection as ws:
+        await ws.recv()
+        await ws.send(json.dumps({'type': 'auth', 'token': token}))
+        reply = json.loads(await asyncio.wait_for(ws.recv(), 10))
+        if reply.get('type') == 'error':
+            raise TapError(f'認証に失敗した: {reply.get("reason")}')
+
+        loop = asyncio.get_running_loop()
+        end = loop.time() + seconds
+        while loop.time() < end:
+            await ws.send(json.dumps({'type': 'manual_vel', 'vx': vx, 'wz': wz}))
+            await asyncio.sleep(0.1)
+
+        # 指令もハートビートも送らずに接続だけ維持する。gateway 側が
+        # ゼロを出し始めるはず。
+        if then_silent > 0:
+            await asyncio.sleep(then_silent)
+
+        if estop:
+            await ws.send(json.dumps({'type': 'estop', 'engage': True}))
+            await asyncio.sleep(0.5)
