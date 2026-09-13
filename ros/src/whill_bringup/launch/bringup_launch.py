@@ -27,6 +27,8 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+from whill_bringup.gateway_guard import on_gateway_exit
+
 VALID_MODES = ('real', 'sim', 'replay', 'mock')
 
 
@@ -303,6 +305,13 @@ def _setup(context, *args, **kwargs):
         actions.append(Node(
             package='whill_gateway', executable='gateway', name='whill_gateway',
             output='screen',
+            # **gateway が終わったら launch ごと、失敗として止める**（K11, #49）。
+            # `Shutdown()` だけだと終了コードが 0 になり、stackd が「停止」と
+            # 表示して原因を隠す。理由は whill_bringup/gateway_guard.py。
+            #
+            # bag play 側には付けない。再生が終わっても gateway は残して
+            # 「再生終了」を画面に出す（ADR-0004）。
+            on_exit=on_gateway_exit,
             # bag を渡すのは replay のときだけ。他モードで渡すと、gateway が
             # 再生していないのに再生位置を出そうとする。
             parameters=[{'robot_id': robot_id, 'mode': mode,
