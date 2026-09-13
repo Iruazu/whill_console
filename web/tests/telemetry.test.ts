@@ -29,6 +29,7 @@ const item = (over: Partial<TelemetryItem> = {}): TelemetryItem => ({
   crit: 15,
   compare: 'below',
   description: '',
+  ops: false,
   age: 0.4,
   ...over,
 })

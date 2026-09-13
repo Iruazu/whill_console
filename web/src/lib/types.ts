@@ -139,6 +139,11 @@ export interface TelemetryItem {
   crit: number | null
   compare: 'above' | 'below' | 'none'
   description: string
+  /** ops レイアウトの「主要テレメトリ」に出すか。
+   *
+   *  **どれを主要とするかは `config/robots/cr2-base.yaml` が決める。**
+   *  UI に名前を並べない（設計原則 3）。 */
+  ops: boolean
   /** 最後に値が入ってからの秒数。stale を「n 秒前」と出すため。 */
   age: number | null
 }

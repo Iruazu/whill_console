@@ -284,6 +284,34 @@ body {
 .derived { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
 .derived-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
 
+/* ---- ops レイアウト（tablet 幅） --------------------------------------- */
+
+.layout-toggle {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+/* ops は縦積み。俯瞰図が主で、その下に配車と主要テレメトリ。
+   横並びにすると tablet 幅で俯瞰図が潰れる。 */
+.app.layout-ops .layout { flex-direction: column; }
+.app.layout-ops .panel.overview { flex: 3; min-height: 0; }
+.app.layout-ops .side { flex: 2; min-height: 0; overflow: auto; }
+
+/* 現場では指で押す。dev の 12px のボタンでは小さい。 */
+.app.layout-ops .dispatch-targets button { padding: 14px 20px; font-size: 15px; }
+.app.layout-ops .panel.dispatch > button.danger { padding: 10px 18px; font-size: 14px; }
+.app.layout-ops .estop { padding: 10px 22px; font-size: 15px; }
+/* 接続中は上部帯が長くなり、768px では E-stop が 2 行目に折り返す。
+   折り返しても右端（利き手の親指の位置）から動かないようにする。 */
+.app.layout-ops .topbar .estop { margin-left: auto; }
+.app.layout-ops .reading { font-size: 14px; }
+
+
 .overview-controls {
   display: flex;
   align-items: center;

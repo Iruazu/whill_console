@@ -52,6 +52,13 @@ export function Overview2D({ send }: Overview2DProps) {
   const headingUp = useConsoleStore((s) => s.headingUp)
   const setFollowRobot = useConsoleStore((s) => s.setFollowRobot)
   const setHeadingUp = useConsoleStore((s) => s.setHeadingUp)
+  const layout = useConsoleStore((s) => s.layout)
+
+  // dev で配置モードを入れたまま ops に移ると、見えないトグルが生きたまま
+  // になり、地図をタップしただけで障害物が置かれる。
+  useEffect(() => {
+    if (layout !== 'dev') setPlacing(false)
+  }, [layout])
 
   // local を優先し、無ければ global。local は rolling window なので
   // 車体まわりが見たい dev では local のほうが有用。
@@ -235,7 +242,11 @@ export function Overview2D({ send }: Overview2DProps) {
         </span>
       </div>
 
+      {/* 仮想障害物は開発用の道具。ops で置けてしまうと、現場で
+          実機の経路に効く障害物が生える。個数表示だけは残す —
+          dev で置いたまま ops に切り替えたことに気づけるように。 */}
       <div className="overview-controls">
+        {layout === 'dev' && (
         <label>
           <input
             type="checkbox"
@@ -245,7 +256,8 @@ export function Overview2D({ send }: Overview2DProps) {
           />{' '}
           仮想障害物を置く
         </label>
-        {placing && (
+        )}
+        {layout === 'dev' && placing && (
           <label className="radius-control">
             半径
             <input
@@ -267,7 +279,7 @@ export function Overview2D({ send }: Overview2DProps) {
         >
           仮想障害物 {obstacles.length}
         </span>
-        {obstacles.length > 0 && (
+        {layout === 'dev' && obstacles.length > 0 && (
           <button
             type="button"
             onClick={() => send({ type: 'virtual_obstacles', action: 'clear' })}

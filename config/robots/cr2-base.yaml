@@ -25,7 +25,10 @@ drivers:
     subscribes:
       - {topic: /whill/controller/cmd_vel, type: geometry_msgs/msg/Twist}
     telemetry:
-      - {name: battery,     topic: /whill/states/model_cr2, field: battery_power,  unit: "%",   widget: bar,     warn: 30,   crit: 15,  compare: below}
+      # ops レイアウトの「主要テレメトリ」。運用中に見るのは「目的地まで
+      # 保つか」と「自分の位置を分かっているか」の 2 つで、それ以外は
+      # 切り分けのための数字（dev で見る）。
+      - {name: battery,     topic: /whill/states/model_cr2, field: battery_power,  unit: "%",   widget: bar,     warn: 30,   crit: 15,  compare: below, ops: true}
       - {name: motor_current_left,  topic: /whill/states/model_cr2, field: left_motor_current,  unit: A, widget: number, warn: 8.0,  crit: 12.0, compare: above}
       - {name: motor_current_right, topic: /whill/states/model_cr2, field: right_motor_current, unit: A, widget: number, warn: 8.0,  crit: 12.0, compare: above}
       - {name: speed_mode,  topic: /whill/states/model_cr2, field: speed_mode_indicator, unit: null, widget: number, warn: null, crit: null, compare: none}
@@ -40,7 +43,9 @@ drivers:
       - {topic: /scan,            type: sensor_msgs/msg/LaserScan,   rate_hz: 10.0}
     telemetry:
       - {name: points_per_scan, topic: /velodyne_points, field: width, unit: pts, widget: number, warn: 12000, crit: 6000, compare: below}
-      - {name: scan_rate,       topic: /velodyne_points, field: __rate, unit: Hz, widget: number, warn: 8.0,   crit: 5.0,  compare: below}
+      # LiDAR が落ちると Nav2 は止まる。止まった理由が現場で分かるように
+      # ops にも出す。
+      - {name: scan_rate,       topic: /velodyne_points, field: __rate, unit: Hz, widget: number, warn: 8.0,   crit: 5.0,  compare: below, ops: true}
 
   rt_9axis:
     description: >-
@@ -98,6 +103,8 @@ derived_telemetry:
     warn: 5.0
     crit: 10.0
     compare: above
+    # 自分の位置を分かっているかの指標。ops でも出す。
+    ops: true
 
 # モード別に起動するものの宣言。whill_cli の --mode がこれを引く。
 modes:

@@ -10,10 +10,18 @@ const TOKEN_KEY = 'whill.gateway.token'
  * gateway は起動していないので接続は失敗するが、**それでも画面は成立する**
  * ことを見たい（繋がらないと何も出ない、では現地で切り分けができない）。
  */
-async function openWithToken(page: import('@playwright/test').Page) {
+async function openWithToken(
+  page: import('@playwright/test').Page,
+  layout: 'dev' | 'ops' = 'dev',
+) {
+  // レイアウトは明示する。指定しないと初回は画面幅で決まり、ops-tablet
+  // プロジェクト (768px) だけ別の画面を見ることになる。
   await page.addInitScript(
-    ([key, value]) => window.localStorage.setItem(key, value),
-    [TOKEN_KEY, 'e2e-token-1234'],
+    ([key, value, layoutValue]) => {
+      window.localStorage.setItem(key, value)
+      window.localStorage.setItem('whill.layout', layoutValue)
+    },
+    [TOKEN_KEY, 'e2e-token-1234', layout],
   )
   await page.goto('/')
 }
@@ -736,7 +744,8 @@ test.describe('console のスクリーンショット', () => {
             name: 'battery', driver: 'whill_serial',
             topic: '/whill/states/model_cr2', value: 87, unit: '%',
             widget: 'bar', level: 'ok', warn: 30, crit: 15,
-            compare: 'below', description: '', age: 0.4,
+            // cr2-base.yaml と揃える（battery / scan_rate / yaw_rate_vs_ndt が ops）
+            compare: 'below', description: '', ops: true, age: 0.4,
           },
           {
             name: 'motor_current_left', driver: 'whill_serial',
@@ -759,7 +768,7 @@ test.describe('console のスクリーンショット', () => {
           {
             name: 'scan_rate', driver: 'velodyne', topic: '/velodyne_points',
             value: null, unit: 'Hz', widget: 'number', level: 'unknown',
-            warn: 8, crit: 5, compare: 'below', description: '', age: null,
+            warn: 8, crit: 5, compare: 'below', description: '', ops: true, age: null,
           },
         ],
       },
@@ -795,7 +804,7 @@ test.describe('console のスクリーンショット', () => {
       {
         name: 'yaw_rate_vs_ndt', driver: 'derived', topic: '',
         value: 0.42, unit: 'deg/s', widget: 'number', level: 'ok',
-        warn: 5, crit: 10, compare: 'above', description: '', age: 0.2,
+        warn: 5, crit: 10, compare: 'above', description: '', ops: true, age: 0.2,
       },
     ],
     ...over,
@@ -946,5 +955,129 @@ test.describe('console のスクリーンショット', () => {
       page.getByTestId('derived-yaw_rate_vs_ndt')
         .getByTestId('telemetry-value-yaw_rate_vs_ndt'),
     ).toHaveText('—')
+  })
+
+  // ---- ops レイアウト ------------------------------------------------------
+
+  test('ops はパラメータを出さず、配車と主要テレメトリを出す', async ({ page }, testInfo) => {
+    await openWithToken(page, 'ops')
+    await feed(page, telemetryFrame())
+    await page.evaluate(() => {
+      const ingest = (window as unknown as {
+        __whillIngest: (f: Record<string, unknown>) => void
+      }).__whillIngest
+      ingest({
+        type: 'dispatch_waypoints',
+        waypoints: [
+          { name: 'west', label: '西端' }, { name: 'center', label: '中央' },
+          { name: 'east', label: '東端' },
+        ],
+      })
+      ingest({ type: 'dispatch_state', phase: 'IDLE', aligned: true, fitness: 0.3 })
+    })
+
+    // 現場で 47 本のスライダーは要らない。
+    await expect(page.getByTestId('params')).toHaveCount(0)
+    await expect(page.getByTestId('dispatch')).toBeVisible()
+    await expect(page.getByTestId('drivers')).toContainText('主要テレメトリ')
+
+    // ops: true の 3 件だけ。電流や温度は出さない。
+    await expect(page.getByTestId('ops-telemetry-battery')).toBeVisible()
+    await expect(page.getByTestId('ops-telemetry-scan_rate')).toBeVisible()
+    await expect(page.getByTestId('ops-telemetry-yaw_rate_vs_ndt')).toBeVisible()
+    await expect(page.getByTestId('ops-telemetry-temp')).toHaveCount(0)
+    await expect(page.getByTestId('ops-telemetry-motor_current_left')).toHaveCount(0)
+
+    await page.screenshot({
+      path: `${SHOT_DIR}/${testInfo.project.name}-ops.png`,
+      fullPage: false,
+    })
+  })
+
+  test('ops の主要テレメトリは設定の ops: true で決まる', async ({ page }) => {
+    // UI に名前を並べていないこと。ops: true を付ければ出る。
+    await openWithToken(page, 'ops')
+    await feed(page, telemetryFrame({
+      drivers: [{
+        driver: 'whill_serial', expected: true,
+        items: [
+          { name: 'battery', value: 87, unit: '%', widget: 'bar', level: 'ok',
+            compare: 'below', ops: true },
+          { name: 'motor_current_left', value: 9.2, unit: 'A', widget: 'number',
+            level: 'warn', compare: 'above', ops: true },
+        ],
+      }],
+      derived: [{ name: 'yaw_rate_vs_ndt', value: 0.4, unit: 'deg/s',
+                  widget: 'number', level: 'ok', compare: 'above', ops: true }],
+    }))
+    await expect(page.getByTestId('ops-telemetry-motor_current_left')).toBeVisible()
+    await expect(page.getByTestId('ops-telemetry-yaw_rate_vs_ndt')).toBeVisible()
+  })
+
+  test('ops では E-stop がスクロールなしで押せる', async ({ page }) => {
+    // 屋外で一番押したいもの。スクロールしないと見えない位置に置かない。
+    await page.setViewportSize({ width: 768, height: 1024 })
+    await openWithToken(page, 'ops')
+    const estop = page.getByTestId('estop')
+    await expect(estop).toBeInViewport()
+    // ページ自体が縦にもスクロールしないこと（上部帯が流れていかない）。
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollHeight - document.documentElement.clientHeight,
+    )
+    expect(overflow, '縦にはみ出していて E-stop が流れていく').toBeLessThanOrEqual(0)
+  })
+
+  test('ops は 768px で横スクロールしない', async ({ page }) => {
+    await page.setViewportSize({ width: 768, height: 1024 })
+    await openWithToken(page, 'ops')
+    await feed(page, telemetryFrame())
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow, '横方向にはみ出している').toBeLessThanOrEqual(0)
+  })
+
+  test('ops の俯瞰図は追従・進行方向上で開く', async ({ page }) => {
+    await openWithToken(page, 'ops')
+    await expect(page.getByTestId('follow-robot')).toBeChecked()
+    await expect(page.getByTestId('heading-up')).toBeChecked()
+  })
+
+  test('dev の俯瞰図は map 固定で開く', async ({ page }) => {
+    await openWithToken(page, 'dev')
+    await expect(page.getByTestId('follow-robot')).not.toBeChecked()
+    await expect(page.getByTestId('heading-up')).not.toBeChecked()
+  })
+
+  test('ops では仮想障害物を置けない', async ({ page }) => {
+    // 開発用の道具。現場で置けてしまうと実機の経路に効く障害物が生える。
+    await openWithToken(page, 'ops')
+    await expect(page.getByTestId('placing-mode')).toHaveCount(0)
+    // 個数だけは出す。dev で置いたまま切り替えたことに気づけるように。
+    await expect(page.getByTestId('obstacle-count')).toBeVisible()
+  })
+
+  test('切り替えが効き、リロードしても保たれる', async ({ page }) => {
+    await page.addInitScript(
+      ([key, value]) => window.localStorage.setItem(key, value),
+      [TOKEN_KEY, 'e2e-token-1234'],
+    )
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/')
+    // 広い画面の初回は dev。
+    await expect(page.getByTestId('params')).toBeVisible()
+
+    await page.getByTestId('layout-toggle').click()
+    await expect(page.getByTestId('params')).toHaveCount(0)
+    await expect(page.getByTestId('follow-robot')).toBeChecked()
+
+    // リロードで dev に戻ると、屋外で全スライダーが出てくる。
+    await page.reload()
+    await expect(page.getByTestId('params')).toHaveCount(0)
+    await expect(page.getByTestId('layout-toggle')).toHaveText('dev へ')
+
+    await page.getByTestId('layout-toggle').click()
+    await expect(page.getByTestId('params')).toBeVisible()
+    await expect(page.getByTestId('follow-robot')).not.toBeChecked()
   })
 })

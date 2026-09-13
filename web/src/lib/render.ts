@@ -1,5 +1,5 @@
 import { cellColor } from './rle'
-import { scanToWorld, worldToCanvas } from './transform'
+import { costmapAffine, scanToWorld, worldToCanvas } from './transform'
 import type { ViewState, Viewport } from './transform'
 import type {
   CostmapState,
@@ -132,21 +132,14 @@ function drawCostmap(
   const buffer = imageToCanvas(image)
   if (!buffer) return
 
-  // 格子の左上（world では左上 = originY + height*res）を画面座標に置く
-  const topLeft = worldToCanvas(
-    map.originX,
-    map.originY + map.height * map.resolution,
-    view,
-    viewport,
-  )
-  const scale = map.resolution * view.pixelsPerMeter
+  // 置き方は transform.ts の costmapAffine に 1 か所だけ持つ。回転の向きを
+  // ここで別に書くと、進行方向上で地図だけ逆に回る（実際にそうなっていた）。
+  const [a, b, c, d, e, f] = costmapAffine(map, view, viewport)
 
   ctx.save()
   // 更新が途絶えた地図は薄くする。最新のように見せない。
   ctx.globalAlpha = stale ? 0.35 : 1
-  ctx.translate(topLeft.x, topLeft.y)
-  ctx.rotate(-view.rotation)
-  ctx.scale(scale, scale)
+  ctx.transform(a, b, c, d, e, f)
   // 拡大時にセルが滲むと「どこが障害物か」が曖昧になる
   ctx.imageSmoothingEnabled = false
   ctx.drawImage(buffer, 0, 0)

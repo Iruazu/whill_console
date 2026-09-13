@@ -93,6 +93,12 @@ class TelemetrySpec:
     crit: float | None = None
     compare: str = 'none'
     description: str = ''
+    ops: bool = False
+    """ops レイアウト（tablet）の「主要テレメトリ」に出すか。
+
+    **どれを主要とするかは設定が決める。** UI に名前を並べると 3 台で
+    食い違い、変えるのに再ビルドが要る（設計原則 3）。
+    """
     rate_hz: float | None = None
     """`publishes` に書かれた宣言レート。
 
@@ -167,6 +173,7 @@ def load_specs(base: dict[str, Any], robot: dict[str, Any] | None = None,
                 crit=item.get('crit'),
                 compare=item.get('compare', 'none'),
                 description=item.get('description', ''),
+                ops=bool(item.get('ops', False)),
                 rate_hz=rates.get(item['topic']),
             ))
 
@@ -228,6 +235,7 @@ def load_derived(base: dict[str, Any]) -> list[TelemetrySpec]:
             crit=item.get('crit'),
             compare=item.get('compare', 'none'),
             description=item.get('description', ''),
+            ops=bool(item.get('ops', False)),
         ))
     return specs
 
@@ -429,6 +437,7 @@ class TelemetryStore:
             'crit': spec.crit,
             'compare': spec.compare,
             'description': spec.description,
+            'ops': spec.ops,
             # 「n 秒前」を出すため。stale の値を最新のように描かせない。
             'age': None if age is None else round(age, 2),
         }

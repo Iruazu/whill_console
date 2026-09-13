@@ -110,6 +110,9 @@ TELEMETRY_ITEM = {
         'crit': {'type': ['number', 'null']},
         'compare': {'enum': ['above', 'below', 'none']},
         'description': {'type': 'string'},
+        # ops レイアウト（tablet）の「主要テレメトリ」に出すか。
+        # どれを主要とするかは設定が決める。UI に名前を並べない（設計原則 3）。
+        'ops': {'type': 'boolean'},
     },
 }
 
@@ -128,6 +131,7 @@ DERIVED_TELEMETRY_ITEM = {
         'warn': {'type': ['number', 'null']},
         'crit': {'type': ['number', 'null']},
         'compare': {'enum': ['above', 'below', 'none']},
+        'ops': {'type': 'boolean'},
     },
 }
 

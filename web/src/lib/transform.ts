@@ -141,3 +141,42 @@ export function scanToWorld(
 export function clampZoom(value: number): number {
   return Math.min(MAX_PIXELS_PER_METER, Math.max(MIN_PIXELS_PER_METER, value))
 }
+
+/** canvas の変換行列 `[a, b, c, d, e, f]`（`ctx.setTransform` と同じ並び）。 */
+export type Affine = [number, number, number, number, number, number]
+
+/** costmap の ImageData（左上原点、1 セル = 1 px）を canvas に置く変換。
+ *
+ * **ここを 1 か所にしてあるのは、回転の向きを一度間違えたから。**
+ * `worldToCanvas` は world の点を `-rotation` 回してから y を反転する。
+ * y の反転で回転の向きが入れ替わるので、canvas 上では `+rotation` の回転に
+ * なる。costmap の描画だけ `ctx.rotate(-rotation)` にしていたため、
+ * **進行方向上にすると地図だけ逆に回り、LiDAR・経路・車体と重ならなかった。**
+ * map 固定（rotation = 0）ではどちらでも同じ絵になるので、dev では気づけない。
+ *
+ * テストで「セル中心をこの行列で写した先」と「`worldToCanvas(cellToWorld)`」が
+ * 一致することを確かめている。描画の変換を別に書き足さないこと。
+ */
+export function costmapAffine(
+  map: Pick<CostmapState, 'originX' | 'originY' | 'resolution' | 'height'>,
+  view: ViewState,
+  viewport: Viewport,
+): Affine {
+  // ImageData の左上 = world の (originX, originY + height*res)
+  const topLeft = worldToCanvas(
+    map.originX,
+    map.originY + map.height * map.resolution,
+    view,
+    viewport,
+  )
+  const scale = map.resolution * view.pixelsPerMeter
+  const cos = Math.cos(view.rotation)
+  const sin = Math.sin(view.rotation)
+  // translate(topLeft) · rotate(+rotation) · scale(scale)
+  return [cos * scale, sin * scale, -sin * scale, cos * scale, topLeft.x, topLeft.y]
+}
+
+/** 変換行列で点を写す。テストと描画の検算用。 */
+export function applyAffine(m: Affine, x: number, y: number): { x: number; y: number } {
+  return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] }
+}

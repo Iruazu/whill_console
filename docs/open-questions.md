@@ -32,6 +32,7 @@
 | 5 | **`/imu/temperature` を実ドライバが出すか。** モックは出す。`cr2-base.yaml` の `publishes` に宣言したので `whill doctor` が要求する。出さないなら宣言を外すこと。 |
 | 5 | 温度・電力の実値レンジ。`cr2-base.yaml` の warn/crit 閾値は推定値。 |
 | 3 | **全域 costmap（440×140 セル）を描いたときの tablet での描画負荷。** ImageData を 1 枚起こして拡大する方式にしてあるが、実機の tablet での実測は未実施。 |
+| 5 | **ops のボタンの大きさと配置が屋外・片手で使えるか。** 行き先ボタン 14px/20px、E-stop は上部帯の右端（768px で接続中は 2 行目に折り返す）。Chromium 768×1024 でスクロールなしに押せることは Playwright で確認済みだが、手袋・直射日光・走行中の揺れの中では見ていない。 |
 | 5 | tablet 実機（iPad 等）での ops レイアウトの視認性。Playwright は Chromium 768px で見ているだけで、実機 WebKit と屋外の輝度は見ていない。 |
 | 全体 | 3台での `ROS_DOMAIN_ID` 分離の実確認（21 / 22 / 23 を割り当て済み、未検証）。 |
 
@@ -49,7 +50,7 @@
 | K9 | **`rclpy` の `wait_for_service` は executor と競合して購読コールバックごと止める。** replay（Nav2 が居ない）で全ノードが未応答のとき、gateway が「起動しているのにテレメトリが 1 通も流れない」状態になった。 | 待たない。`service_is_ready()` が false なら即座に unreachable として扱う。次にクライアントが繋いだときに再試行される。 |
 | K7 | **mock と実機で cmd_vel の配線が 1 段違う。** 実機は `controller_server → /cmd_vel_nav → twist_mux → /cmd_vel → velocity_smoother → /whill/controller/cmd_vel`。mock は nav2_bringup の `navigation_launch.py` をそのまま使うため velocity_smoother が先に入り、`… → velocity_smoother → /cmd_vel → twist_mux → /whill/controller/cmd_vel` になる。影響は「E-stop のゼロが velocity_smoother を通らない」こと（mock は即停止、実機は減速カーブ）。 | E-stop としては mock のほうが厳しいので上位の検証には支障がない。`mode=real` を配線する時点で実機の順序に揃える。設定は `ros/src/whill_bringup/config/twist_mux_mock.yaml` に注記済み。 |
 | K12 | **gateway の配信タイマーは宣言より 1 割ほど速い。** 実測で `status` が 1.0 Hz 宣言に対し 1.14 Hz、`telemetry` が 6.0 Hz 宣言に対し 6.72 Hz。`ClockType.SYSTEM_TIME` の時計を渡した rclpy タイマーを別スレッドの `SingleThreadedExecutor` で回している構成の性質で、Phase 2 から続いている（今回の実装で持ち込んだものではない）。 | 上限レートは帯域を守るためのもので、1 割の超過で困る場面が無いため放置する。実機PC の CPU 負荷を測る段階（B 節）で問題になったら、タイマーではなく `RateLimiter` 方式（テレメトリの間引きと同じ）に寄せること。 |
-| K11 | **bag を再生し終えても gateway は残り、次の `whill run` が port 8765 を取れずに落ちる。** gateway が死んでも launch 全体は生き続けるので、「スタックは動いているのにブラウザから何も繋がらない」状態になる。原因はログに出る（`address already in use`）が、上位からは見えない。gateway が残るのは意図どおり（再生が終わったことを画面に出すため — ADR-0004）。 | 当面は前のスタックを止めてから起動する。恒久対応は `whill_bringup` で gateway ノードに `on_exit=Shutdown()` を付け、gateway が死んだら launch ごと落とすこと。Phase 5 で入れる。 |
+| K11 | **bag を再生し終えても gateway は残り、次の `whill run` が port 8765 を取れずに落ちる。** gateway が死んでも launch 全体は生き続けるので、「スタックは動いているのにブラウザから何も繋がらない」状態になる。原因はログに出る（`address already in use`）が、上位からは見えない。gateway が残るのは意図どおり（再生が終わったことを画面に出すため — ADR-0004）。 | 当面は前のスタックを止めてから起動する。恒久対応は `whill_bringup` で gateway ノードに `on_exit=Shutdown()` を付け、gateway が死んだら launch ごと落とすこと。**Phase 5 で入れると書いたが入れていない**（#39〜#43 のどれの範囲でもなかった）。独立した issue に切る。 |
 | K5 | **`mode=real` と `mode=sim` は未配線。** 呼ぶと明示的に例外で落ちる。 | 黙って何も起動しないより落ちるほうが安全（「実機モードで動いたつもり」を防ぐ）。real は実機復帰後、sim は `sim/` の world 整備後。 |
 
 ## D. 解決済み
