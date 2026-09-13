@@ -452,7 +452,8 @@ describe('ドライバのテレメトリ', () => {
           name: 'battery', driver: 'whill_serial',
           topic: '/whill/states/model_cr2', value: 87, unit: '%',
           widget: 'bar', level: 'ok', warn: 30, crit: 15,
-          compare: 'below', description: '', age: 0.4,
+          // 宣言に ops が無ければ false。主要テレメトリに勝手に入れない。
+          compare: 'below', description: '', ops: false, age: 0.4,
         },
       ],
     })

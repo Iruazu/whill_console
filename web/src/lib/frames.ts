@@ -471,6 +471,7 @@ function toTelemetryItem(raw: WireFrame): TelemetryItem {
     crit: opt(raw.crit),
     compare: str(raw.compare, 'none') as TelemetryItem['compare'],
     description: str(raw.description),
+    ops: raw.ops === true,
     age: opt(raw.age),
   }
 }

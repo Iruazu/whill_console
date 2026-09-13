@@ -9,6 +9,7 @@ import {
   summaryItems,
   worstLevel,
 } from '../lib/telemetry'
+import { LAYOUT_DEFAULTS, opsItems } from '../lib/layout'
 import type { TelemetryDriver, TelemetryItem } from '../lib/types'
 import { useConsoleStore } from '../state/store'
 
@@ -21,12 +22,47 @@ import { useConsoleStore } from '../state/store'
  *
  * 設計原則 2。値の推移が見たいときは Foxglove / Lichtblick を使う。ここが
  * 見せるのは「いまの値」と「危ないかどうか」だけ。
+ *
+ * ## ops では主要テレメトリだけ
+ *
+ * 電流や温度は切り分けのための数字で、運用中に見るものではない。**どれを
+ * 主要とするかは `config/robots/cr2-base.yaml` の `ops: true` が決める** —
+ * ここに名前を並べない（設計原則 3）。
  */
 export function DriversPanel() {
   const telemetry = useConsoleStore((s) => s.telemetry)
+  const layout = useConsoleStore((s) => s.layout)
 
   // gateway は telemetry 宣言があれば必ず送る。null は「まだ 1 通も来ていない」。
   if (telemetry === null) return null
+
+  if (!LAYOUT_DEFAULTS[layout].showAllTelemetry) {
+    const items = [
+      ...telemetry.drivers.flatMap((d) => opsItems(d.items)),
+      ...opsItems(telemetry.derived),
+    ]
+    return (
+      <section className="panel drivers ops" data-testid="drivers">
+        <h2>主要テレメトリ</h2>
+        {items.length === 0 ? (
+          <p className="muted" data-testid="ops-telemetry-empty">
+            ops に出す項目が宣言されていない（cr2-base.yaml の ops: true）。
+          </p>
+        ) : (
+          items.map((item) => (
+            <div
+              key={item.name}
+              className={`derived-row level-${item.level}`}
+              data-testid={`ops-telemetry-${item.name}`}
+            >
+              <span className={`badge level-${item.level}`}>{LEVEL_MARK[item.level]}</span>
+              <Reading item={item} />
+            </div>
+          ))
+        )}
+      </section>
+    )
+  }
 
   return (
     <section className="panel drivers" data-testid="drivers">

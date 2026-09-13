@@ -2,6 +2,8 @@ import { create } from 'zustand'
 
 import { applyFrame, emptyFrameState } from '../lib/frames'
 import type { FrameState } from '../lib/frames'
+import { LAYOUT_DEFAULTS, loadLayout, saveLayout } from '../lib/layout'
+import type { Layout } from '../lib/layout'
 import type { ConnectionState } from '../lib/types'
 
 /** 画面全体の状態。
@@ -20,18 +22,25 @@ interface ConsoleState extends FrameState {
    *  無視した数は数える。増え続けているなら UI が古い。 */
   unhandledFrames: number
 
-  /** dev レイアウトの初期値は追従 OFF・map 固定（計画書 Phase 3）。 */
+  /** dev / ops。切り替えは localStorage に残る。 */
+  layout: Layout
+  /** dev は追従 OFF・map 固定、ops は追従 ON・進行方向上。
+   *  用途が違うので初期値も違う（lib/layout.ts）。 */
   followRobot: boolean
   headingUp: boolean
 
   setConnection: (state: ConnectionState, detail?: string) => void
   setLatency: (ms: number) => void
   ingest: (frame: Record<string, unknown>, now?: number) => void
+  setLayout: (layout: Layout) => void
   setFollowRobot: (value: boolean) => void
   setHeadingUp: (value: boolean) => void
   clearError: () => void
   reset: () => void
 }
+
+const initialLayout: Layout =
+  typeof window === 'undefined' ? 'dev' : loadLayout(window.innerWidth)
 
 export const useConsoleStore = create<ConsoleState>((set) => ({
   ...emptyFrameState(),
@@ -39,8 +48,9 @@ export const useConsoleStore = create<ConsoleState>((set) => ({
   connectionDetail: '',
   latencyMs: null,
   unhandledFrames: 0,
-  followRobot: false,
-  headingUp: false,
+  layout: initialLayout,
+  followRobot: LAYOUT_DEFAULTS[initialLayout].followRobot,
+  headingUp: LAYOUT_DEFAULTS[initialLayout].headingUp,
 
   setConnection: (connection, detail = '') =>
     set({
@@ -61,11 +71,23 @@ export const useConsoleStore = create<ConsoleState>((set) => ({
       }
     }),
 
+  // レイアウトを変えたら俯瞰図の見方も既定に戻す。dev の map 固定のまま
+  // ops に移ると、現場で「前に何があるか」が見えない画面になる。
+  setLayout: (layout) => {
+    saveLayout(layout)
+    set({
+      layout,
+      followRobot: LAYOUT_DEFAULTS[layout].followRobot,
+      headingUp: LAYOUT_DEFAULTS[layout].headingUp,
+    })
+  },
+
   setFollowRobot: (followRobot) => set({ followRobot }),
   setHeadingUp: (headingUp) => set({ headingUp }),
   clearError: () => set({ lastError: null }),
 
   // 再接続時に古い costmap を引きずらない。前の接続の地図に新しい
   // 部分更新を貼ると壊れた絵になる。
+  // レイアウトの選択は接続とは無関係なので残す。
   reset: () => set({ ...emptyFrameState(), unhandledFrames: 0 }),
 }))

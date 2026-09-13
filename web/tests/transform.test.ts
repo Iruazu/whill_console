@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   MAX_PIXELS_PER_METER,
+  applyAffine,
+  costmapAffine,
   MIN_PIXELS_PER_METER,
   canvasToWorld,
   cellToWorld,
@@ -150,4 +152,30 @@ describe('既定の表示', () => {
     // dev の初期値は追従 OFF・map 固定（計画書 Phase 3）
     expect(defaultView().rotation).toBe(0)
   })
+})
+
+describe('costmap の置き方と他の描画が重なる', () => {
+  // 進行方向上で costmap だけ逆に回り、LiDAR・経路・車体と重ならなかった。
+  // map 固定（rotation = 0）では同じ絵になるので、dev では気づけない。
+  // 描画の変換（costmapAffine）でセル中心を写した先が、点を描くときの
+  // worldToCanvas と一致することを、いくつもの向きで確かめる。
+  const map = { originX: -11, originY: -3.5, resolution: 0.05, height: 140, width: 440 }
+  const viewport = { width: 768, height: 480 }
+
+  const rotations = [0, Math.PI / 6, Math.PI / 2, 2.2, Math.PI, -Math.PI / 3, -2.9]
+  for (const rotation of rotations) {
+    it(`rotation = ${rotation.toFixed(2)} rad`, () => {
+      const view = { centerX: 2.5, centerY: -1.0, pixelsPerMeter: 20, rotation }
+      const m = costmapAffine(map, view, viewport)
+      for (const [col, row] of [[0, 0], [439, 0], [0, 139], [220, 70], [37, 101]]) {
+        // OccupancyGrid の行は下から上、ImageData は上から下（costmapToImageData と同じ）
+        const imageRow = map.height - 1 - row
+        const viaImage = applyAffine(m, col + 0.5, imageRow + 0.5)
+        const w = cellToWorld(col, row, map)
+        const viaPoint = worldToCanvas(w.x, w.y, view, viewport)
+        expect(viaImage.x).toBeCloseTo(viaPoint.x, 6)
+        expect(viaImage.y).toBeCloseTo(viaPoint.y, 6)
+      }
+    })
+  }
 })

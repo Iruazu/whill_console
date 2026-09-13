@@ -21,6 +21,8 @@ export function TopBar({ send, stackd }: TopBarProps) {
   const detail = useConsoleStore((s) => s.connectionDetail)
   const latency = useConsoleStore((s) => s.latencyMs)
   const status = useConsoleStore((s) => s.status)
+  const layout = useConsoleStore((s) => s.layout)
+  const setLayout = useConsoleStore((s) => s.setLayout)
   const [confirmRelease, setConfirmRelease] = useState(false)
 
   const connected = connection === 'connected'
@@ -78,6 +80,20 @@ export function TopBar({ send, stackd }: TopBarProps) {
         )}
 
         <span className="spacer" />
+
+        {/* **画面幅で勝手に切り替えない。** 見ている最中にレイアウトが
+            入れ替わるのは操作の途中では危ないし、デスクトップで ops を
+            確認できないと崩れに気づけない。初回だけ幅で決めて、あとは
+            この操作が正（lib/layout.ts）。 */}
+        <button
+          type="button"
+          className="layout-toggle"
+          data-testid="layout-toggle"
+          title={layout === 'dev' ? '運用向けの画面に切り替える' : '開発向けの画面に切り替える'}
+          onClick={() => setLayout(layout === 'dev' ? 'ops' : 'dev')}
+        >
+          {layout === 'dev' ? 'ops へ' : 'dev へ'}
+        </button>
 
         {/* 未接続なら押せないと分かること。押した感触だけあって何も起きないのが最悪。 */}
         <button

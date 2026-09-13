@@ -81,7 +81,7 @@ GitHub 側だけ名前を変えた。両者を混同しないこと。
 | 2 | gateway と stackd ✅ | 別PC のブラウザから costmap / pose が届く。ハートビート断で速度ゼロ |
 | 3 | Web dev レイアウト ✅ | スライダー → Nav2 反映が 200 ms 以内、Playwright スクショ自動保存 |
 | 4 | 仮想障害物と再生 ✅ | 仮想障害物で経路が迂回、bag 再生が俯瞰図に再現 |
-| 5 | drivers テレメトリと ops | 閾値超えで warning 色、768px で ops が崩れない |
+| 5 | drivers テレメトリと ops ✅ | 閾値超えで warning 色、768px で ops が崩れない |
 | 6 | 周辺（camera / tf / sam_infer） | 後回し可 |
 
 ## 既存スタックとの関係
