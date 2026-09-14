@@ -25,12 +25,13 @@ from __future__ import annotations
 
 import asyncio
 import os
+import signal
 import threading
 from typing import Any
 
 import rclpy
 from rclpy.clock import Clock, ClockType
-from rclpy.executors import SingleThreadedExecutor
+from rclpy.executors import ExternalShutdownException, SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import (
     QoSDurabilityPolicy,
@@ -38,6 +39,7 @@ from rclpy.qos import (
     QoSProfile,
     QoSReliabilityPolicy,
 )
+from rclpy.signals import SignalHandlerOptions
 from whill_msgs.msg import VirtualObstacle, VirtualObstacleArray
 
 from geometry_msgs.msg import Point, Twist
@@ -69,6 +71,19 @@ TF_SUMMARY_PERIOD_SEC = 1.0
 いちばん厳しい閾値（odom -> base_link の warn 0.5 s）より細かくはしない。
 画面が知りたいのは「止まったか」で、1 秒遅れて気づけば足りる。
 """
+
+STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM)
+"""止まる合図。SIGINT は Ctrl+C と launch / stackd、SIGTERM は systemd（#65）。"""
+
+CLOSE_TIMEOUT_SEC = 3.0
+"""停止時にクライアントとの切断を待つ上限。
+
+応答しないクライアントが 1 台いるだけで止まらない、を作らない。stackd は
+SIGINT から 5 秒で SIGTERM に上げるので、それより短くする。
+"""
+
+SPIN_JOIN_TIMEOUT_SEC = 2.0
+"""停止時に ROS のスレッドが抜けるのを待つ上限。"""
 
 REPLAY_PERIOD_SEC = 0.25
 """再生位置の配信周期。
@@ -646,7 +661,28 @@ def _read_token(node: Node) -> str:
 
 
 async def _serve(node: Gateway, token: str, ssl_context) -> None:
-    node._loop = asyncio.get_running_loop()
+    loop = asyncio.get_running_loop()
+    node._loop = loop
+
+    # **止まる合図は asyncio 側で受ける**（#65）。
+    #
+    # 以前は rclpy のシグナル handler に任せていた。rclpy は SIGTERM を受けると
+    # ROS の context を落とすだけで、このイベントループには何も伝えないので、
+    # SIGTERM では永久に止まらず port を握ったまま残った（systemd の stop が
+    # これ）。SIGINT が止まっていたのは、rclpy が Python 既定の handler に
+    # 繋いで KeyboardInterrupt になっていたからで、SIGINT が無視された状態で
+    # 起動される（シェルのバックグラウンドジョブなど）と SIGINT でも止まらなかった。
+    stop = asyncio.Event()
+    received: list[str] = []
+
+    def request_stop(sig: signal.Signals) -> None:
+        received.append(sig.name)
+        stop.set()
+
+    # 待ち受けより先に入れる。「待ち受け中」を出した直後の合図を取りこぼさない。
+    for sig in STOP_SIGNALS:
+        loop.add_signal_handler(sig, request_stop, sig)
+
     node.server = GatewayServer(
         token=token,
         robot_id=node.robot_id,
@@ -669,12 +705,38 @@ async def _serve(node: Gateway, token: str, ssl_context) -> None:
         node.get_logger().warning(
             'TLS 未設定のため平文で待ち受ける。iPad から使うなら '
             'WHILL_TLS_CERT / WHILL_TLS_KEY を設定すること（docs/runbook.md）')
-    # サーバは close されるまで動き続ける。ここで無限に待つ。
-    await asyncio.Event().wait()
+
+    await stop.wait()
+    node.get_logger().info(f'{received[0]} を受けたので停止する')
+    # 2 通目以降は無視する。stackd はプロセスグループごと SIGINT を送り、launch も
+    # 同じ SIGINT を gateway に転送するので、ほぼ必ず 2 通来る。ループを閉じた後に
+    # 届くと asyncio が `Bad file descriptor` のトレースを出す。
+    # 無視しても止まらなくなることは無い: 下の切断待ちと spin の join には上限があり、
+    # 最後は stackd / launch の SIGKILL がある。
+    for sig in STOP_SIGNALS:
+        loop.remove_signal_handler(sig)
+        signal.signal(sig, signal.SIG_IGN)
+    try:
+        await asyncio.wait_for(node.server.close(), CLOSE_TIMEOUT_SEC)
+    except asyncio.TimeoutError:
+        node.get_logger().warning(
+            f'クライアントの切断が {CLOSE_TIMEOUT_SEC:.0f} 秒で終わらないので待たずに止まる')
+
+
+def _spin(executor: SingleThreadedExecutor) -> None:
+    # 停止時に executor より先に context が落ちると、spin は
+    # ExternalShutdownException で抜ける。止めている最中なので正常。
+    # 握りつぶさないとスタックトレースが出て、異常終了に見える。
+    try:
+        executor.spin()
+    except ExternalShutdownException:
+        pass
 
 
 def main(args=None) -> None:
-    rclpy.init(args=args)
+    # シグナルは _serve が受ける。rclpy に取らせると、SIGTERM で ROS だけ
+    # 落ちて WebSocket サーバが残る（#65）。
+    rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO)
     node = Gateway()
     token = _read_token(node)
     try:
@@ -689,18 +751,21 @@ def main(args=None) -> None:
     executor.add_node(node)
     # ROS を別スレッドで回す。daemon にしておかないと、asyncio 側が
     # 終わってもプロセスが残る。
-    spinner = threading.Thread(target=executor.spin, daemon=True, name='rclpy-spin')
+    spinner = threading.Thread(target=_spin, args=(executor,), daemon=True, name='rclpy-spin')
     spinner.start()
 
     try:
         asyncio.run(_serve(node, token, ssl_context))
-    except KeyboardInterrupt:
-        pass
     finally:
-        executor.shutdown()
-        node.destroy_node()
+        # **順番に意味がある**（#65）。spin のスレッドは wait の中で寝ている。
+        # 先に context を落として起こし、抜けるのを待ってから node を壊す。
+        # 逆にすると寝ているスレッドごと C++ 側が壊れ、`terminate called
+        # without an active exception` で abort（終了コード -6）した。
         if rclpy.ok():
             rclpy.shutdown()
+        spinner.join(timeout=SPIN_JOIN_TIMEOUT_SEC)
+        executor.shutdown()
+        node.destroy_node()
 
 
 if __name__ == '__main__':
