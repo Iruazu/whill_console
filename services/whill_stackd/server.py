@@ -187,12 +187,16 @@ class StackdServer:
 
     # ---- 待ち受け ----------------------------------------------------------
 
-    async def serve(self, host: str, port: int):
+    async def serve(self, host: str, port: int, *, ssl_context=None):
         import websockets
 
         self._loop = asyncio.get_running_loop()
-        server = await websockets.serve(self.handle, host, port)
-        LOGGER.info('待ち受け開始: ws://%s:%d', host, port)
+        server = await websockets.serve(self.handle, host, port, ssl=ssl_context)
+        LOGGER.info('待ち受け開始: %s://%s:%d',
+                    'wss' if ssl_context is not None else 'ws', host, port)
+        if ssl_context is None:
+            LOGGER.warning('TLS 未設定のため平文で待ち受ける。iPad から使うなら '
+                           'WHILL_TLS_CERT / WHILL_TLS_KEY を設定すること')
         return server
 
 

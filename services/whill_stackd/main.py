@@ -21,6 +21,7 @@ import signal
 import sys
 from pathlib import Path
 
+from whill_stackd import tls
 from whill_stackd.server import DEFAULT_PORT, StackdServer
 
 
@@ -36,9 +37,9 @@ def _repo_root() -> str:
         'scripts/env.sh を source すること')
 
 
-async def _run(host: str, port: int, token: str, repo_root: str) -> int:
+async def _run(host: str, port: int, token: str, repo_root: str, ssl_context) -> int:
     server = StackdServer(token=token, repo_root=repo_root)
-    await server.serve(host, port)
+    await server.serve(host, port, ssl_context=ssl_context)
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -76,7 +77,14 @@ def main() -> int:
         print('WHILL_GATEWAY_TOKEN が短すぎる（8 文字以上にすること）', file=sys.stderr)
         return 2
 
-    return asyncio.run(_run(args.host, args.port, token, _repo_root()))
+    try:
+        ssl_context = tls.server_context()
+    except tls.TlsConfigError as exc:
+        # 指定されているのに平文に戻らない（gateway と同じ規則）。
+        print(f'TLS の設定が不正なので起動しない: {exc}', file=sys.stderr)
+        return 2
+
+    return asyncio.run(_run(args.host, args.port, token, _repo_root(), ssl_context))
 
 
 if __name__ == '__main__':

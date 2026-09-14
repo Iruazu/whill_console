@@ -21,6 +21,7 @@ from rich.console import Console
 from rich.table import Table
 
 from whill_cli import config
+from whill_stackd import tls
 
 app = typer.Typer(
     add_completion=False,
@@ -199,7 +200,7 @@ def tap(
         console.print('[red]WHILL_GATEWAY_TOKEN が未設定[/red]')
         raise typer.Exit(2)
 
-    url = f'ws://{host}:{port}'
+    url = f'{tls.scheme()}://{host}:{port}'
     console.print(f'{url} に {seconds:.0f} 秒つなぐ')
 
     outgoing = []
@@ -279,7 +280,7 @@ def manual_drive(
                   + ('、最後に E-stop' if estop else ''))
     try:
         asyncio.run(run_manual(
-            f'ws://{host}:{port}', token, vx=vx, wz=wz,
+            f'{tls.scheme()}://{host}:{port}', token, vx=vx, wz=wz,
             seconds=seconds, then_silent=then_silent, estop=estop))
     except TapError as exc:
         console.print(f'[red]{exc}[/red]')
@@ -323,7 +324,7 @@ def measure_latency(
 
     try:
         samples = asyncio.run(
-            measure(f'ws://{host}:{port}', token, targets, repeats=repeats))
+            measure(f'{tls.scheme()}://{host}:{port}', token, targets, repeats=repeats))
     except TapError as exc:
         console.print(f'[red]{exc}[/red]')
         raise typer.Exit(1) from None
@@ -530,6 +531,8 @@ def _stackd_call(url: str, request: dict | None, *, follow: float = 0.0) -> None
 
     from whill_cli.stackd_client import StackdError, run_command
 
+    # 既定の宛先は手元の stackd。研究室 CA が設定されていれば wss で繋ぐ（#55）。
+    url = url or f'{tls.scheme()}://127.0.0.1:8770'
     token = os.environ.get('WHILL_GATEWAY_TOKEN', '')
     if not token:
         console.print('[red]WHILL_GATEWAY_TOKEN が未設定[/red]')
@@ -561,14 +564,14 @@ def _stackd_call(url: str, request: dict | None, *, follow: float = 0.0) -> None
 
 
 @stack_app.command('status')
-def stack_status(url: str = typer.Option('ws://127.0.0.1:8770', '--url')) -> None:
+def stack_status(url: str = typer.Option(None, '--url', help='既定は ws://127.0.0.1:8770（WHILL_TLS_CA があれば wss://）')) -> None:
     """stackd に現在の状態を問い合わせる。"""
     _stackd_call(url, {'type': 'status'})
 
 
 @stack_app.command('start')
 def stack_start(
-    url: str = typer.Option('ws://127.0.0.1:8770', '--url'),
+    url: str = typer.Option(None, '--url', help='既定は ws://127.0.0.1:8770（WHILL_TLS_CA があれば wss://）'),
     robot: str = typer.Option('cr2-01', '--robot', '-r'),
     mode: str = typer.Option('mock', '--mode', '-m'),
     preset: str = typer.Option('', '--preset', '-p'),
@@ -584,7 +587,7 @@ def stack_start(
 
 @stack_app.command('stop')
 def stack_stop(
-    url: str = typer.Option('ws://127.0.0.1:8770', '--url'),
+    url: str = typer.Option(None, '--url', help='既定は ws://127.0.0.1:8770（WHILL_TLS_CA があれば wss://）'),
     follow: float = typer.Option(10.0, '--follow', '-f'),
 ) -> None:
     """stackd 経由でスタックを停止する。"""
@@ -593,7 +596,7 @@ def stack_stop(
 
 @stack_app.command('restart')
 def stack_restart(
-    url: str = typer.Option('ws://127.0.0.1:8770', '--url'),
+    url: str = typer.Option(None, '--url', help='既定は ws://127.0.0.1:8770（WHILL_TLS_CA があれば wss://）'),
     robot: str = typer.Option('cr2-01', '--robot', '-r'),
     mode: str = typer.Option('mock', '--mode', '-m'),
     follow: float = typer.Option(15.0, '--follow', '-f'),
@@ -605,7 +608,7 @@ def stack_restart(
 
 @stack_app.command('logs')
 def stack_logs(
-    url: str = typer.Option('ws://127.0.0.1:8770', '--url'),
+    url: str = typer.Option(None, '--url', help='既定は ws://127.0.0.1:8770（WHILL_TLS_CA があれば wss://）'),
     limit: int = typer.Option(50, '--limit', '-n', help='直近の何行を出すか'),
     follow: float = typer.Option(0.0, '--follow', '-f', help='そのあと何秒流し続けるか'),
 ) -> None:

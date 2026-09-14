@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 
+import { socketUrl } from '../lib/gateway'
+
 /** stackd（ポート 8770）の状態を読むだけの接続。
  *
  * gateway とは**別プロセス・別ポート**。stackd は gateway を含むスタック全体を
@@ -33,8 +35,8 @@ export function useStackd(token: string, enabled = true): StackdStatus | null {
 
     const connect = () => {
       if (stopped) return
-      const host = window.location.hostname || '127.0.0.1'
-      socket = new WebSocket(`ws://${host}:8770`)
+      // ページが https なら wss。gateway と同じ規則（lib/gateway.ts）。
+      socket = new WebSocket(socketUrl(8770))
 
       socket.onopen = () => socket?.send(JSON.stringify({ type: 'auth', token }))
       socket.onmessage = (event) => {

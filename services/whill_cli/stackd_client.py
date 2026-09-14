@@ -9,6 +9,8 @@ import asyncio
 import json
 from collections.abc import Callable
 
+from whill_stackd import tls
+
 
 class StackdError(Exception):
     """接続または認証に失敗した。"""
@@ -25,7 +27,7 @@ async def run_command(url: str, token: str, request: dict | None, *,
     import websockets
 
     try:
-        connection = await asyncio.wait_for(websockets.connect(url), 10)
+        connection = await asyncio.wait_for(websockets.connect(url, **tls.connect_kwargs(url)), 10)
     except Exception as exc:
         raise StackdError(
             f'stackd に接続できない ({url}): {exc}\n'

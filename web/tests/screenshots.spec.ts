@@ -719,7 +719,8 @@ test.describe('console のスクリーンショット', () => {
     await page.waitForTimeout(1500)
 
     // Vite の HMR ソケットは開発サーバのもので、成果物には含まれない。
-    const app = urls.filter((url) => !url.includes(':5173') && !url.includes('/@vite/'))
+    // テスト用の開発サーバは 5174（playwright.config.ts）、手で起動するものは 5173。
+    const app = urls.filter((url) => !/:517[34]\//.test(url) && !url.includes('/@vite/'))
 
     // 8765 = gateway（ROS への唯一の口）、8770 = stackd（起動・停止とログ。
     // ROS を喋らないので DDS も topic も通らない）。この 2 つ以外は増やさない。

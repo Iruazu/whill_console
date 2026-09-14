@@ -226,12 +226,29 @@ export function backoffDelay(attempt: number): number {
   return Math.min(RECONNECT_BASE_MS * 2 ** attempt, RECONNECT_MAX_MS)
 }
 
-/** 既定の接続先。
+/** ページの scheme に合わせた WebSocket の scheme（#55）。
  *
- * 「いま開いているホストの 8765」。localhost 固定にすると、実機PC の
- * dev サーバを他PC から開いたときに繋がらない。
+ * **https のページからは平文の `ws://` に繋げない**（混在コンテンツとして
+ * ブラウザが拒否する）。iPad は http を https に上げてしまうので、iPad から
+ * 使うときは必ず https + wss になる。
  */
+export function socketScheme(pageProtocol: string): 'ws' | 'wss' {
+  return pageProtocol === 'https:' ? 'wss' : 'ws'
+}
+
+/** いま開いているホストの、指定ポートの WebSocket URL。
+ *
+ * localhost 固定にすると、実機PC のサーバを他PC や tablet から開いたときに
+ * 繋がらない。 */
+export function socketUrl(
+  port: number,
+  location: Pick<Location, 'protocol' | 'hostname'> = window.location,
+): string {
+  const host = location.hostname || '127.0.0.1'
+  return `${socketScheme(location.protocol)}://${host}:${port}`
+}
+
+/** 既定の接続先。いま開いているホストの 8765。 */
 export function gatewayUrl(): string {
-  const host = window.location.hostname || '127.0.0.1'
-  return `ws://${host}:8765`
+  return socketUrl(8765)
 }
