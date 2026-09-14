@@ -4,7 +4,7 @@ import { useGateway } from './hooks/useGateway'
 import { useStackd } from './hooks/useStackd'
 import { useStoreProbe } from './hooks/useStoreProbe'
 import { LAYOUT_DEFAULTS } from './lib/layout'
-import { loadToken } from './lib/token'
+import { clearToken, loadToken } from './lib/token'
 import { Overview2D } from './panels/Overview2D'
 import { DispatchPanel } from './panels/DispatchPanel'
 import { DriversPanel } from './panels/DriversPanel'
@@ -24,7 +24,26 @@ import { useConsoleStore } from './state/store'
  */
 export function App() {
   const [token, setToken] = useState(loadToken)
-  const client = useGateway(token)
+  /** 直前に gateway が返した拒否の理由。入力画面に出す（#58）。 */
+  const [rejected, setRejected] = useState<string | null>(null)
+
+  // 拒否されたトークンは保存から消して入力に戻す。残すと開き直しても同じ
+  // トークンで拒否され続け、画面から抜け出せない（iPad で実際に詰まった）。
+  const onAuthRejected = useCallback((reason: string) => {
+    clearToken()
+    setRejected(reason)
+    setToken('')
+  }, [])
+
+  // この端末からトークンを消す。共有端末で使い終わったときと、
+  // gateway のトークンを作り直したとき用。
+  const forgetToken = useCallback(() => {
+    clearToken()
+    setRejected(null)
+    setToken('')
+  }, [])
+
+  const client = useGateway(token, onAuthRejected)
   useStoreProbe()
   const stackd = useStackd(token)
   const layout = useConsoleStore((s) => s.layout)
@@ -36,14 +55,22 @@ export function App() {
   )
 
   if (!token) {
-    return <TokenGate onSubmit={setToken} />
+    return (
+      <TokenGate
+        rejected={rejected}
+        onSubmit={(next) => {
+          setRejected(null)
+          setToken(next)
+        }}
+      />
+    )
   }
 
   const shows = LAYOUT_DEFAULTS[layout]
 
   return (
     <div className={`app layout-${layout}`}>
-      <TopBar send={send} stackd={stackd} />
+      <TopBar send={send} stackd={stackd} onForgetToken={forgetToken} />
       {/* replay モードでのみ描かれる（gateway が他モードでは送らない）。 */}
       <ReplayBar send={send} />
       <div className="layout">

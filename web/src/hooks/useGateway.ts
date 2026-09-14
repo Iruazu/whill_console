@@ -9,13 +9,21 @@ import { useConsoleStore } from '../state/store'
  * 拒否されるだけで、画面には「認証に失敗した」しか出ず、原因（未設定）が
  * 分かりにくい。
  */
-export function useGateway(token: string): GatewayClient | null {
+export function useGateway(
+  token: string,
+  /** 認証を拒否されたとき（#58）。呼び出し側がトークンを入れ直させる。 */
+  onAuthRejected?: (reason: string) => void,
+): GatewayClient | null {
   const setConnection = useConsoleStore((s) => s.setConnection)
   const ingest = useConsoleStore((s) => s.ingest)
   const reset = useConsoleStore((s) => s.reset)
   const setLatency = useConsoleStore((s) => s.setLatency)
   const [client, setClient] = useState<GatewayClient | null>(null)
   const wasConnected = useRef(false)
+  // 最新のコールバックを参照する。依存配列に入れると、描画のたびに
+  // 接続を張り直してしまう。
+  const rejectedRef = useRef(onAuthRejected)
+  rejectedRef.current = onAuthRejected
 
   useEffect(() => {
     if (!token) {
@@ -39,6 +47,7 @@ export function useGateway(token: string): GatewayClient | null {
       },
       onFrame: (frame) => ingest(frame),
       onLatency: setLatency,
+      onAuthRejected: (reason) => rejectedRef.current?.(reason),
     })
     instance.connect()
     setClient(instance)

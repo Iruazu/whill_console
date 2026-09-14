@@ -53,7 +53,7 @@ interface Harness {
   pending: { fn: () => void; ms: number }[]
 }
 
-function harness(streams?: string[]): Harness {
+function harness(streams?: string[], onAuthRejected?: (reason: string) => void): Harness {
   const sockets: FakeSocket[] = []
   const states: Harness['states'] = []
   const frames: Record<string, unknown>[] = []
@@ -65,6 +65,7 @@ function harness(streams?: string[]): Harness {
     streams,
     onState: (state, detail) => states.push({ state, detail }),
     onFrame: (frame) => frames.push(frame),
+    onAuthRejected,
     socketFactory: () => {
       const socket = new FakeSocket()
       sockets.push(socket)
@@ -191,6 +192,30 @@ describe('再接続', () => {
     const last = h.states.at(-1)!
     expect(last.state).toBe('error')
     expect(last.detail).toMatch(/トークン/)
+  })
+
+  it('認証を拒否されたら理由を添えて知らせる（#58）', () => {
+    // 画面がトークンの入力に戻すための合図。理由は gateway が返したものそのまま。
+    const reasons: string[] = []
+    const h = harness(undefined, (reason) => reasons.push(reason))
+    h.client.connect()
+    h.sockets[0].onopen?.()
+    h.sockets[0].deliver({ type: 'error', reason: 'トークンが違う', fatal: true })
+    h.sockets[0].onclose?.()
+
+    expect(reasons).toEqual(['トークンが違う'])
+    // 一般的な文言で上書きせず、理由を残す
+    expect(h.states.at(-1)?.detail).toBe('認証に失敗した: トークンが違う')
+  })
+
+  it('認証後の致命的なエラーはトークンの問題として扱わない', () => {
+    // 入力画面に戻すのは「認証前に拒否された」ときだけ
+    const reasons: string[] = []
+    const h = harness(undefined, (reason) => reasons.push(reason))
+    h.client.connect()
+    authenticate(h.sockets[0])
+    h.sockets[0].deliver({ type: 'error', reason: '別の理由', fatal: true })
+    expect(reasons).toEqual([])
   })
 
   it('こちらから閉じたら繋ぎ直さない', () => {

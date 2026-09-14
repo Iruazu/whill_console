@@ -14,9 +14,11 @@ import { useConsoleStore } from '../state/store'
 export interface TopBarProps {
   send: (frame: Record<string, unknown>) => boolean
   stackd: StackdStatus | null
+  /** この端末からトークンを消して入力画面に戻す（#58）。 */
+  onForgetToken?: () => void
 }
 
-export function TopBar({ send, stackd }: TopBarProps) {
+export function TopBar({ send, stackd, onForgetToken }: TopBarProps) {
   const connection = useConsoleStore((s) => s.connection)
   const detail = useConsoleStore((s) => s.connectionDetail)
   const latency = useConsoleStore((s) => s.latencyMs)
@@ -24,6 +26,7 @@ export function TopBar({ send, stackd }: TopBarProps) {
   const layout = useConsoleStore((s) => s.layout)
   const setLayout = useConsoleStore((s) => s.setLayout)
   const [confirmRelease, setConfirmRelease] = useState(false)
+  const [confirmForget, setConfirmForget] = useState(false)
 
   const connected = connection === 'connected'
   const estop = status?.estop === true
@@ -85,6 +88,18 @@ export function TopBar({ send, stackd }: TopBarProps) {
             入れ替わるのは操作の途中では危ないし、デスクトップで ops を
             確認できないと崩れに気づけない。初回だけ幅で決めて、あとは
             この操作が正（lib/layout.ts）。 */}
+        {onForgetToken && (
+          <button
+            type="button"
+            className="layout-toggle"
+            data-testid="token-forget"
+            title="この端末に保存したトークンを消して、入力画面に戻る"
+            onClick={() => setConfirmForget(true)}
+          >
+            トークンを消す
+          </button>
+        )}
+
         <button
           type="button"
           className="layout-toggle"
@@ -111,6 +126,35 @@ export function TopBar({ send, stackd }: TopBarProps) {
       {estop && (
         <div className="estop-banner" data-testid="estop-banner">
           E-STOP 作動中。自律走行と手動操作を遮断している。
+        </div>
+      )}
+
+      {confirmForget && (
+        <div className="modal" data-testid="token-forget-dialog">
+          <div className="modal-body">
+            <h2>この端末のトークンを消す</h2>
+            <p>
+              消すと gateway との接続が切れ、<strong>この端末からは E-STOP も
+              届かなくなる</strong>。走行中なら先に止めること。
+            </p>
+            <p>共有端末で使い終わったときや、gateway のトークンを作り直したときに使う。</p>
+            <div className="modal-actions">
+              <button type="button" onClick={() => setConfirmForget(false)}>
+                やめる
+              </button>
+              <button
+                type="button"
+                className="danger"
+                data-testid="token-forget-confirm"
+                onClick={() => {
+                  setConfirmForget(false)
+                  onForgetToken?.()
+                }}
+              >
+                消す
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

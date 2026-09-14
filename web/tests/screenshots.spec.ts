@@ -1081,4 +1081,106 @@ test.describe('console のスクリーンショット', () => {
     await expect(page.getByTestId('params')).toBeVisible()
     await expect(page.getByTestId('follow-robot')).not.toBeChecked()
   })
+
+  // ---- トークンの入れ直し（#58） --------------------------------------------
+
+  /** gateway と stackd の代わり。正しいトークンだけ通し、違えば gateway と同じ
+   *  形の拒否（`error` / `fatal: true` / 理由）を返す。 */
+  const fakeSockets = (page: import('@playwright/test').Page, good: string) =>
+    page.addInitScript((goodToken) => {
+      class FakeSocket {
+        onopen: (() => void) | null = null
+        onmessage: ((e: { data: string }) => void) | null = null
+        onerror: (() => void) | null = null
+        onclose: (() => void) | null = null
+        readyState = 0
+        constructor(public url: string) {
+          setTimeout(() => {
+            this.readyState = 1
+            this.onopen?.()
+          }, 10)
+        }
+        private reply(frame: unknown) {
+          setTimeout(() => this.onmessage?.({ data: JSON.stringify(frame) }), 5)
+        }
+        send(raw: string) {
+          const frame = JSON.parse(raw)
+          if (frame.type !== 'auth') return
+          if (frame.token === goodToken) {
+            this.reply({ type: 'hello', authenticated: true, robot_id: 'cr2-01', mode: 'mock',
+                         service: 'whill_stackd' })
+            this.reply({ type: 'status', state: 'running', robot_id: 'cr2-01', mode: 'mock',
+                         nav_active: true, estop: false, clients: 1, stamp: 1 })
+          } else {
+            this.reply({ type: 'error', reason: 'トークンが違う', fatal: true })
+            setTimeout(() => { this.readyState = 3; this.onclose?.() }, 20)
+          }
+        }
+        close() { this.readyState = 3; this.onclose?.() }
+      }
+      ;(window as unknown as { WebSocket: unknown }).WebSocket = FakeSocket
+    }, good)
+
+  test('拒否されたトークンは消して入力に戻し、理由を出す', async ({ page }, testInfo) => {
+    await fakeSockets(page, 'correct-token-1234')
+    await page.addInitScript(() => {
+      // 以前に打ち間違えて保存されたトークン
+      window.localStorage.setItem('whill.gateway.token', 'wrong-token-9999')
+      window.localStorage.setItem('whill.layout', 'dev')
+    })
+    await page.goto('/')
+
+    // 以前はここで「gateway error」のまま抜け出せなかった（iPad で実際に詰まった）
+    await expect(page.getByTestId('token-gate')).toBeVisible()
+    await expect(page.getByTestId('token-rejected')).toContainText('トークンが違う')
+    expect(await page.evaluate(() => window.localStorage.getItem('whill.gateway.token')))
+      .toBeNull()
+    await page.screenshot({
+      path: `${SHOT_DIR}/${testInfo.project.name}-token-rejected.png`, fullPage: true })
+
+    // その場で入れ直すと繋がる
+    await page.getByTestId('token-input').fill('correct-token-1234')
+    await page.getByTestId('token-submit').click()
+    await expect(page.getByTestId('connection')).toHaveText(/gateway 接続/)
+    await expect(page.getByTestId('token-rejected')).toHaveCount(0)
+    expect(await page.evaluate(() => window.localStorage.getItem('whill.gateway.token')))
+      .toBe('correct-token-1234')
+  })
+
+  test('短すぎるトークンは送る前に言う', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('token-input').fill('abc')
+    await expect(page.getByTestId('token-count')).toHaveText('3 文字')
+    await page.getByTestId('token-submit').click()
+    await expect(page.getByTestId('token-error')).toContainText('短すぎる')
+    await expect(page.getByTestId('token-gate')).toBeVisible()
+  })
+
+  test('入力を表示に切り替えて打ち間違いを確かめられる', async ({ page }) => {
+    await page.goto('/')
+    const input = page.getByTestId('token-input')
+    await expect(input).toHaveAttribute('type', 'password')
+    await page.getByTestId('token-show').check()
+    await expect(input).toHaveAttribute('type', 'text')
+  })
+
+  test('トークンを消すと確認のあと入力画面に戻る', async ({ page }) => {
+    await fakeSockets(page, 'correct-token-1234')
+    await page.addInitScript(() => {
+      window.localStorage.setItem('whill.gateway.token', 'correct-token-1234')
+      window.localStorage.setItem('whill.layout', 'dev')
+    })
+    await page.goto('/')
+    await expect(page.getByTestId('connection')).toHaveText(/gateway 接続/)
+
+    await page.getByTestId('token-forget').click()
+    // 消すと E-STOP も届かなくなる。いきなり消さない
+    await expect(page.getByTestId('token-forget-dialog')).toContainText('E-STOP')
+    await page.getByTestId('token-forget-confirm').click()
+
+    await expect(page.getByTestId('token-gate')).toBeVisible()
+    await expect(page.getByTestId('token-rejected')).toHaveCount(0)
+    expect(await page.evaluate(() => window.localStorage.getItem('whill.gateway.token')))
+      .toBeNull()
+  })
 })

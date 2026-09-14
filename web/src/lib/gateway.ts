@@ -37,6 +37,11 @@ export interface GatewayOptions {
   onFrame: (frame: Record<string, unknown>) => void
   /** 往復遅延 (ms)。測れたときだけ呼ばれる。 */
   onLatency?: (ms: number) => void
+  /** 認証を拒否された（#58）。`reason` は gateway が返した理由。
+   *
+   *  **繋ぎ直しても直らないので、トークンを入れ直させる合図。** 呼ばれたあと
+   *  このクライアントは再接続しない。 */
+  onAuthRejected?: (reason: string) => void
   /** テスト用の差し替え口。既定はブラウザの WebSocket。 */
   socketFactory?: (url: string) => WebSocketLike
   /** 再接続の予約。テスト用の差し替え口。既定は setTimeout。 */
@@ -65,6 +70,7 @@ export class GatewayClient {
   private timer: unknown = null
   private closedByUs = false
   private authFailed = false
+  private rejectReason = ''
   private authenticated = false
   private pingTimer: unknown = null
   private pendingPing: { token: number; sentAt: number } | null = null
@@ -137,7 +143,12 @@ export class GatewayClient {
       if (frame.type === 'error' && frame.fatal === true) {
         // 認証拒否など、繋ぎ直しても直らないもの。理由を残して諦める。
         this.authFailed = true
-        this.options.onState('error', String(frame.reason ?? '拒否された'))
+        this.rejectReason = String(frame.reason ?? '拒否された')
+        this.options.onState('error', this.rejectReason)
+        if (!this.authenticated) {
+          // 認証前の拒否 = トークンの問題。画面に入れ直させる。
+          this.options.onAuthRejected?.(this.rejectReason)
+        }
       }
 
       this.options.onFrame(frame)
@@ -158,7 +169,9 @@ export class GatewayClient {
       }
       if (this.authFailed) {
         // 再試行しない。トークンが違うまま叩き続けても直らない。
-        this.options.onState('error', '認証に失敗した。トークンを確認すること')
+        // 理由は gateway が返したものを残す。一般的な文言で上書きすると、
+        // 「トークンが違う」のか別の理由なのかが画面から消える。
+        this.options.onState('error', `認証に失敗した: ${this.rejectReason}`)
         return
       }
       this.options.onState('disconnected')
