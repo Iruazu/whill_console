@@ -267,3 +267,12 @@ export interface DiagnosticEntry {
   level: number
   message: string
 }
+
+/** カメラの 1 枚（#52）。gateway は `image_publish_rate`（既定 1 Hz）で間引いて送る。 */
+export interface CameraImage {
+  /** `CompressedImage.format` そのまま（例: `rgb8; jpeg compressed bgr8`）。 */
+  format: string
+  /** base64。data URL にして `<img>` に渡す。 */
+  data: string
+  stamp: number
+}

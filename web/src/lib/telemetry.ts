@@ -52,6 +52,16 @@ export function isDown(driver: TelemetryDriver): boolean {
   )
 }
 
+/** そのモードでは起動しない宣言で、実際にも値が来ていないか（「対象外」と出す）。
+ *
+ * **宣言上は対象外でも、値が来ていれば普通に出す**（#52）。realsense は既定で
+ * 起動しないが、`--camera` を付ければ動く。動いているのに「対象外」と出すと、
+ * フレームレートのテレメトリが隠れる。
+ */
+export function isOffByDeclaration(driver: TelemetryDriver): boolean {
+  return !driver.expected && driver.items.every((item) => item.level === 'unknown')
+}
+
 /** 畳んだ状態で出す項目。
  *
  * 先頭の 1 件（宣言順が重要度の順）に加えて、**warn / crit / stale のものは

@@ -6,6 +6,8 @@ import { useStoreProbe } from './hooks/useStoreProbe'
 import { LAYOUT_DEFAULTS } from './lib/layout'
 import { clearToken, loadToken } from './lib/token'
 import { Overview2D } from './panels/Overview2D'
+import { defaultStreams, streamsWithImage } from './lib/streams'
+import { CameraPanel } from './panels/CameraPanel'
 import { DispatchPanel } from './panels/DispatchPanel'
 import { DriversPanel } from './panels/DriversPanel'
 import { ParamsPanel } from './panels/ParamsPanel'
@@ -54,6 +56,13 @@ export function App() {
     [client],
   )
 
+  // 画像の購読を足し外しする。gateway は一覧で置き換えるので、既定の一覧を
+  // 送り直す（lib/streams.ts）。
+  const setImageSubscribed = useCallback(
+    (on: boolean) => client?.subscribe(on ? streamsWithImage() : defaultStreams()),
+    [client],
+  )
+
   if (!token) {
     return (
       <TokenGate
@@ -80,6 +89,7 @@ export function App() {
           {shows.showDispatch && <DispatchPanel send={send} />}
           {/* telemetry 宣言があるモードでのみ描かれる。 */}
           <DriversPanel />
+          {shows.showCamera && <CameraPanel setImageSubscribed={setImageSubscribed} />}
           {/* 現場で 47 本のスライダーは要らない。触れてしまうほうが危ない。 */}
           {shows.showParams && <ParamsPanel send={send} />}
         </div>

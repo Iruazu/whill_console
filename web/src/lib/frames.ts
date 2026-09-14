@@ -1,5 +1,6 @@
 import { applyCostmapUpdate, costmapFromFrame } from './rle'
 import type {
+  CameraImage,
   CostmapScope,
   DispatchPhase,
   DispatchState,
@@ -73,6 +74,8 @@ export interface FrameState {
    */
   paramRevision: Record<string, number>
   tf: TfSummary | null
+  /** 最新のカメラ画像。camera パネルを開いて購読しているときだけ届く（#52）。 */
+  image: CameraImage | null
   diagnostics: DiagnosticEntry[]
   /** フレーム種別ごとの最終受信時刻 (ms)。古さの判定に使う。 */
   receivedAt: Record<string, number>
@@ -99,6 +102,7 @@ export const emptyFrameState = (): FrameState => ({
   paramChanges: [],
   paramRevision: {},
   tf: null,
+  image: null,
   diagnostics: [],
   receivedAt: {},
   lastError: null,
@@ -401,6 +405,20 @@ export function applyFrame(
             ...state.paramRevision,
             [key]: (state.paramRevision[key] ?? 0) + 1,
           },
+        },
+      }
+    }
+
+    case 'image': {
+      const data = str(frame.data)
+      // 空の画像で直前の 1 枚を消さない。壊れた 1 通で画面が真っ白になる。
+      if (!data) return { state: { ...state, receivedAt: stamp }, handled: true }
+      return {
+        handled: true,
+        state: {
+          ...state,
+          receivedAt: stamp,
+          image: { format: str(frame.format), data, stamp: num(frame.stamp) },
         },
       }
     }

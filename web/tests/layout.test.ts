@@ -77,6 +77,12 @@ describe('初期値', () => {
     expect(LAYOUT_DEFAULTS.dev.showParams).toBe(true)
   })
 
+  it('カメラは dev だけ（#52）', () => {
+    // 運用中に見るものではない。帯域も使う
+    expect(LAYOUT_DEFAULTS.dev.showCamera).toBe(true)
+    expect(LAYOUT_DEFAULTS.ops.showCamera).toBe(false)
+  })
+
   it('配車はどちらでも出す', () => {
     expect(LAYOUT_DEFAULTS.ops.showDispatch).toBe(true)
     expect(LAYOUT_DEFAULTS.dev.showDispatch).toBe(true)

@@ -34,7 +34,8 @@
 | 5 | 温度・電力の実値レンジ。`cr2-base.yaml` の warn/crit 閾値は推定値。 |
 | 3 | **全域 costmap（440×140 セル）を描いたときの tablet での描画負荷。** ImageData を 1 枚起こして拡大する方式にしてあるが、実機の tablet での実測は未実施。 |
 | 5 | **ops のボタンの大きさと配置が屋外・片手で使えるか。** 行き先ボタン 14px/20px、E-stop は上部帯の右端（768px で接続中は 2 行目に折り返す）。Chromium 768×1024 でスクロールなしに押せることは Playwright で確認済みだが、手袋・直射日光・走行中の揺れの中では見ていない。 |
-| 5 | **iPad の Chrome と mDNS 名での確認**（#55）。2026-09-14 に iPad の **Safari** で、runbook の手順どおり CA を信頼したあと `https://172.20.10.2:5173` が開き、gateway（wss 8765）と stackd（wss 8770）に接続したままになることを確認済み（iPhone テザリング、PC のインターネットも生きていた）。**未確認**: iPad の Chrome から開けるか、`https://<hostname>.local:5173` の名前で開けるか、iPad が CA の Name Constraints を守るか。 |
+| 5 | **iPad の Chrome と mDNS 名での確認**（#55）。2026-09-14 に iPad の **Safari** で、runbook の手順どおり CA を信頼したあと `https://172.20.10.2:5173` が開き、gateway（wss 8765）と stackd（wss 8770）に接続したままになることを確認済み（iPhone テザリング、PC のインターネットも生きていた）。同日、gateway が配る画面（`https://172.20.10.2:8765/`、#56）でも接続を確認した。**未確認**: iPad の Chrome から開けるか、`https://<hostname>.local:5173` の名前で開けるか、iPad が CA の Name Constraints を守るか。 |
+| 6 | **実機 D435 の画像の大きさと帯域**（#52）。mock（640×480、単純な絵）では 1 枚 17.2 KiB の JSON、1 Hz で 0.13 Mbit/s（`docs/measurements/2026-09-14-camera-bandwidth.md`）。屋外の実画像は数倍になりうる。テザリングで足りるか、`image_publish_rate` を下げる必要があるか。実ドライバ（realsense2_camera 4.55.1）の圧縮トピックの実レートも未確認。 |
 | 5 | tablet 実機（iPad 等）での ops レイアウトの視認性。Playwright は Chromium 768px で見ているだけで、実機 WebKit と屋外の輝度は見ていない。 |
 | 全体 | 3台での `ROS_DOMAIN_ID` 分離の実確認（21 / 22 / 23 を割り当て済み、未検証）。 |
 

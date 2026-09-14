@@ -258,7 +258,8 @@ source scripts/env.sh              # 発行済みなら WHILL_TLS_CERT / KEY / C
 
 ### 確かめたこと・確かめていないこと
 
-- **確認済み（2026-09-14）**: iPad の Safari で、上の手順のあと https / wss で繋がる
+- **確認済み（2026-09-14）**: iPad の Safari で、上の手順のあと https / wss で繋がる。
+  開発サーバ（`:5173`）と、gateway が配る画面（`:8765/`）の両方
 - iPad の Chrome で開けるか
 - `https://<hostname>.local:8765/` の名前で開けるか（証明書には入れてある）
 - iPad が CA の Name Constraints を守るか

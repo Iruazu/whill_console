@@ -1,0 +1,108 @@
+import { useEffect, useState } from 'react'
+
+import { imageMime } from '../lib/streams'
+import { useConsoleStore } from '../state/store'
+
+/** カメラ（#52）。dev レイアウトだけに出す。
+ *
+ * ## 開いているあいだだけ画像を流す
+ *
+ * 画像は gateway の既定のストリームに入っていない（帯域）。パネルを開いたら
+ * 画像を購読に足し、閉じたら外す。**見ていないのに流し続けない。**
+ *
+ * ## 止まった画像を最新に見せない
+ *
+ * カメラが止まっても最後の 1 枚は残る。そのまま出すと「いまこう映っている」と
+ * 読んでしまうので、古くなったら薄くして何秒前のものかを出す（costmap や
+ * テレメトリと同じ扱い）。
+ *
+ * 深度画像・点群は出さない（設計原則 2。Foxglove に委譲する）。
+ */
+
+/** これだけ新しい画像が来なければ古いとみなす。gateway は既定 1 Hz で送る。 */
+export const IMAGE_STALE_MS = 3000
+
+/** 開いてからこれだけ待っても 1 枚も来なければ、来ない理由を出す。 */
+export const IMAGE_NEVER_MS = 5000
+
+export interface CameraPanelProps {
+  /** 購読を切り替える。gateway は一覧で置き換える。 */
+  setImageSubscribed: (on: boolean) => void
+}
+
+export function CameraPanel({ setImageSubscribed }: CameraPanelProps) {
+  const [open, setOpen] = useState(false)
+  const [openedAt, setOpenedAt] = useState<number | null>(null)
+  const [now, setNow] = useState(() => Date.now())
+  const image = useConsoleStore((s) => s.image)
+  const receivedAt = useConsoleStore((s) => s.receivedAt.image)
+  const connection = useConsoleStore((s) => s.connection)
+
+  // 開閉と、繋ぎ直したときに購読を送る。再接続すると gateway 側の購読は
+  // 既定に戻るので、開いたままなら送り直す。
+  useEffect(() => {
+    if (connection !== 'connected') return
+    setImageSubscribed(open)
+  }, [open, connection, setImageSubscribed])
+
+  // 閉じずに画面を離れる（レイアウト切り替えなど）ときも外す。
+  useEffect(() => () => setImageSubscribed(false), [setImageSubscribed])
+
+  // 「n 秒前」を進めるための時計。開いているあいだだけ回す。
+  useEffect(() => {
+    if (!open) return
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [open])
+
+  const age = receivedAt === undefined ? null : now - receivedAt
+  const stale = age !== null && age > IMAGE_STALE_MS
+  const neverArrived =
+    open && image === null && openedAt !== null && now - openedAt > IMAGE_NEVER_MS
+
+  return (
+    <section className="panel camera" data-testid="camera">
+      <button
+        type="button"
+        className="camera-toggle"
+        aria-expanded={open}
+        data-testid="camera-toggle"
+        onClick={() => {
+          setOpen((v) => !v)
+          setOpenedAt(Date.now())
+          setNow(Date.now())
+        }}
+      >
+        <span className="driver-caret">{open ? '▾' : '▸'}</span>
+        <h2>カメラ</h2>
+        {!open && <span className="muted">開くと画像を受け取る（帯域を使う）</span>}
+      </button>
+
+      {open && (
+        <div className="camera-body">
+          {image ? (
+            <figure className={`camera-frame${stale ? ' stale' : ''}`}>
+              <img
+                src={`data:${imageMime(image.format)};base64,${image.data}`}
+                alt="カメラの最新の画像"
+                data-testid="camera-image"
+              />
+              <figcaption data-testid="camera-age">
+                {stale
+                  ? `${Math.round((age ?? 0) / 1000)} 秒前の画像（更新が止まっている）`
+                  : '最新'}
+              </figcaption>
+            </figure>
+          ) : neverArrived ? (
+            <p className="muted" data-testid="camera-none">
+              画像が来ていない。カメラは既定で起動しない（mock なら <code>--camera</code>）。
+              ドライバパネルの realsense も確認すること。
+            </p>
+          ) : (
+            <p className="muted" data-testid="camera-waiting">画像を待っている…</p>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
