@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
 
+/** テスト用の開発サーバのポート。手で起動する 5173 とぶつけない。 */
+const TEST_PORT = 5174
+
 /** スクリーンショット自動取得。
  *
  * 目的は「描画バグを agent が検知できるようにする」こと（計画書 Phase 0）。
@@ -15,7 +18,7 @@ export default defineConfig({
   fullyParallel: false,
   reporter: [['list']],
   use: {
-    baseURL: 'http://127.0.0.1:5173',
+    baseURL: `http://127.0.0.1:${TEST_PORT}`,
     trace: 'retain-on-failure',
   },
   projects: [
@@ -38,8 +41,12 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'pnpm dev',
-    url: 'http://127.0.0.1:5173',
+    // **テスト用の開発サーバは、手で起動する 5173 と分けて、必ず平文にする**（#55）。
+    // 手元で https の開発サーバ（WHILL_TLS_*）を動かしたままテストすると、
+    // 同じ 5173 を http で待って固まった。TLS の配線は live テストと CLI で見る。
+    command: `pnpm dev --port ${TEST_PORT} --strictPort`,
+    url: `http://127.0.0.1:${TEST_PORT}`,
+    env: { WHILL_TLS_CERT: '', WHILL_TLS_KEY: '' },
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },

@@ -179,8 +179,71 @@ WHILL_GATEWAY_TOKEN=$(openssl rand -hex 16) whill run --robot cr2-01 --mode mock
 (cd web && pnpm dev)          # 0.0.0.0:5173 で待ち受ける
 
 # 他PC / tablet から
-#   http://<lab-pc>:5173
+#   http://<lab-pc>:5173      （研究室 CA を発行済みなら https://）
 ```
+
+## iPad から開く（https / wss）
+
+**iPad の Safari / Chrome は `http://` を `https://` に上げてしまい、http の画面を
+開けない**（`ERR_SSL_PROTOCOL_ERROR`。2026-09-14 に実測）。研究室専用の認証局（CA）を
+作り、iPad に 1 回だけ信頼させる。経緯は #55。
+
+### ネットワーク
+
+**PC をアクセスポイントにしない。** PC のインターネット（Claude Code・GitHub・apt）が
+止まる。PC と iPad を同じネットワークにつなぐ。
+
+- iPhone のインターネット共有に PC と iPad の両方をつなぐ（2026-09-14 に確認。
+  PC は `172.20.10.2`、iPad から PC に届き、PC のインターネットも生きていた）
+- 大学の uu-w は端末どうしが通信できず使えなかった（既存スタックの記録）
+
+### PC 側（CA は 1 回だけ、サーバ証明書は IP が変わったら）
+
+```bash
+scripts/tls/make-ca.sh             # 1 回だけ。~/.config/whill/tls/ に作る。上書きはしない
+scripts/tls/make-server-cert.sh    # 名前・テザリングの範囲・いまの IP を入れて発行
+scripts/tls/make-server-cert.sh 192.168.1.20   # 入っていないアドレスを足す
+
+source scripts/env.sh              # 発行済みなら WHILL_TLS_CERT / KEY / CA が入る
+```
+
+- **`~/.config/whill/tls/ca.key` を git・クラウド・共有フォルダに置かないこと。**
+  この鍵があれば、CA を信頼した iPad に対して LAN 内のアドレスを偽装できる
+  （公開サイトは Name Constraints で発行できないようにしてある）
+- サーバ証明書は 397 日で切れる。切れたら `make-server-cert.sh` をもう一度
+- 平文で動かしたいときは `WHILL_TLS=off source scripts/env.sh`
+- 片方だけ設定されている・ファイルが読めないときは、gateway / stackd / 開発サーバは
+  **起動しない**（平文に黙って戻らない）
+
+### iPad 側（端末ごとに 1 回）
+
+**この順番で。** 以前の記録では、逆にすると Safari が拒否した。
+
+1. PC でスタックを起動しておく（gateway が CA 証明書を配る）
+2. iPad の **Safari** で `https://<PC の IP>:8765/whill-ca.crt` を開く。
+   「接続はプライベートではありません」が出るので、詳細から開く。
+   **Chrome ではプロファイルを入れられない。** Safari を使う
+3. 「プロファイルがダウンロードされました」→ 設定 → 一般 → VPN とデバイス管理 →
+   `whill_console lab CA` をインストール
+4. 設定 → 一般 → 情報 → **証明書信頼設定** → `whill_console lab CA` をオンにする。
+   **ここを忘れると、インストールしただけでは信頼されない**
+5. `https://<PC の IP>:5173` を開き、トークンを入れる。上部帯が「gateway 接続」
+   「stackd running」になれば成立
+
+回避のために Chrome の「常に安全な接続を使用する」をオフにしていたら、オンに戻すこと。
+
+**トークンを間違えると、画面から入力し直す手段がない**（保存されたまま認証拒否が続く。
+gateway のログに「認証拒否 … トークンが違う」が出る）。直るまでは、Safari の
+プライベートブラウズで開き直すか、設定 → アプリ → Safari → 詳細 → Web サイトデータ
+から PC のアドレスを削除する。32 文字を打つときは 4 文字ずつ区切って読むと間違えにくい:
+`fold -w4 <トークンのファイル> | paste -sd' '`
+
+### 確かめたこと・確かめていないこと
+
+- **確認済み（2026-09-14）**: iPad の Safari で、上の手順のあと https / wss で繋がる
+- iPad の Chrome で開けるか
+- `https://<hostname>.local:5173` の名前で開けるか（証明書には入れてある）
+- iPad が CA の Name Constraints を守るか
 
 俯瞰図の操作:
 

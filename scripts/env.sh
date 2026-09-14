@@ -24,6 +24,18 @@ elif [ -f "${HOME}/whill_lab0_ros2/configs/cyclonedds-runtime.xml" ]; then
   export CYCLONEDDS_URI="file://${HOME}/whill_lab0_ros2/configs/cyclonedds-runtime.xml"
 fi
 
+# 研究室 CA の証明書（#55）。発行済みなら gateway / stackd / 開発サーバは
+# https・wss で待ち受け、CLI は wss で繋ぐ。iPad から開くのに要る。
+# 平文で動かしたいときだけ WHILL_TLS=off を付けて source する。
+_whill_tls_dir="${WHILL_TLS_DIR:-${HOME}/.config/whill/tls}"
+if [ "${WHILL_TLS:-on}" != "off" ] && [ -f "${_whill_tls_dir}/server.crt" ] \
+    && [ -f "${_whill_tls_dir}/server.key" ]; then
+  export WHILL_TLS_CERT="${_whill_tls_dir}/server.crt"
+  export WHILL_TLS_KEY="${_whill_tls_dir}/server.key"
+  export WHILL_TLS_CA="${_whill_tls_dir}/ca.crt"
+fi
+unset _whill_tls_dir
+
 # ~/.local/bin (uv, node, pnpm) を通す
 case ":${PATH}:" in
   *":${HOME}/.local/bin:"*) ;;

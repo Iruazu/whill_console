@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from whill_cli.tap import TapError
+from whill_stackd import tls
 
 
 @dataclass
@@ -54,7 +55,7 @@ async def measure(url: str, token: str, keys: list[tuple[str, Any]], *,
     import websockets
 
     try:
-        connection = await asyncio.wait_for(websockets.connect(url), 10)
+        connection = await asyncio.wait_for(websockets.connect(url, **tls.connect_kwargs(url)), 10)
     except Exception as exc:
         raise TapError(f'接続できない: {exc}') from exc
 

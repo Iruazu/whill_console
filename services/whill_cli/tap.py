@@ -16,6 +16,8 @@ import json
 from collections import Counter
 from typing import Any
 
+from whill_stackd import tls
+
 
 class TapError(Exception):
     """接続または認証に失敗した。"""
@@ -35,7 +37,7 @@ async def tap(url: str, token: str, *, seconds: float,
 
     counts: Counter = Counter()
     try:
-        connection = await asyncio.wait_for(websockets.connect(url), 10)
+        connection = await asyncio.wait_for(websockets.connect(url, **tls.connect_kwargs(url)), 10)
     # ライブラリの例外型に依存しない。接続失敗の理由は文字列で伝える。
     except Exception as exc:
         raise TapError(f'接続できない: {exc}') from exc
@@ -127,7 +129,7 @@ async def manual(url: str, token: str, *, vx: float, wz: float,
     import websockets
 
     try:
-        connection = await asyncio.wait_for(websockets.connect(url), 10)
+        connection = await asyncio.wait_for(websockets.connect(url, **tls.connect_kwargs(url)), 10)
     except Exception as exc:
         raise TapError(f'接続できない: {exc}') from exc
 

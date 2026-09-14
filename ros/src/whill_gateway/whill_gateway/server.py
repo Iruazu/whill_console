@@ -270,7 +270,8 @@ class GatewayServer:
 
     # ---- 起動 --------------------------------------------------------------
 
-    async def serve(self, host: str, port: int) -> Any:
+    async def serve(self, host: str, port: int, *, ssl_context: Any = None,
+                    ca_cert_path: str | None = None) -> Any:
         """aiohttp で待ち受ける。
 
         websockets ライブラリを使っていない理由は ADR-0003 を参照。要約すると、
@@ -299,12 +300,15 @@ class GatewayServer:
 
         app = web.Application()
         app.router.add_get('/', _handler)
+        if ssl_context is not None and ca_cert_path:
+            app.router.add_get(CA_CERT_ROUTE, _ca_cert_handler(ca_cert_path))
         runner = web.AppRunner(app, access_log=None)
         await runner.setup()
-        site = web.TCPSite(runner, host, port)
+        site = web.TCPSite(runner, host, port, ssl_context=ssl_context)
         await site.start()
         self._server = runner
-        LOGGER.info('待ち受け開始: ws://%s:%d', host, port)
+        LOGGER.info('待ち受け開始: %s://%s:%d',
+                    'wss' if ssl_context is not None else 'ws', host, port)
         return runner
 
     async def close(self) -> None:
@@ -313,6 +317,38 @@ class GatewayServer:
                 await client.websocket.close()
         if self._server is not None:
             await self._server.cleanup()
+
+
+CA_CERT_ROUTE = '/whill-ca.crt'
+"""研究室 CA の**公開証明書**を配る場所（#55）。
+
+iPad に CA を信頼させるには、まず CA の証明書を iPad に渡す必要がある。
+Linux の PC からは AirDrop できず、平文 http で配ると Safari が https に上げて
+また開けない。そこで gateway 自身が https で配る（まだ信頼していないので
+警告は出るが、ダウンロードはできる）。以前の whill_dispatch と同じやり方。
+
+**配るのは `ca.crt` だけ。** 鍵は絶対に配らない。TLS を有効にしていて
+`WHILL_TLS_CA` が設定されているときだけ、このルートを作る。
+"""
+
+
+def _ca_cert_handler(path: str):
+    from aiohttp import web
+
+    async def _handler(_request):
+        try:
+            with open(path, 'rb') as handle:
+                body = handle.read()
+        except OSError:
+            return web.Response(status=404, text='CA 証明書が見つからない')
+        if b'PRIVATE KEY' in body:
+            # 設定を取り違えて鍵を指していたら配らない。
+            LOGGER.error('WHILL_TLS_CA が秘密鍵を指している。配らない: %s', path)
+            return web.Response(status=500, text='設定の誤り: 鍵は配らない')
+        # この Content-Type だと iOS がプロファイルのインストールを案内する。
+        return web.Response(body=body, content_type='application/x-x509-ca-cert')
+
+    return _handler
 
 
 class _AiohttpSocket:

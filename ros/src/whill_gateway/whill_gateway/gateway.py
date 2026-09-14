@@ -47,7 +47,7 @@ from action_msgs.srv import CancelGoal
 from rosbag2_interfaces.srv import Pause, Resume, SetRate
 from rosgraph_msgs.msg import Clock as ClockMsg
 
-from whill_gateway import protocol
+from whill_gateway import protocol, tls
 from whill_gateway.dispatch import DispatchBridge, DispatchError
 from whill_gateway.driver_telemetry import DriverTelemetry
 from whill_gateway.obstacles import ObstacleError, ObstacleStore, apply_command
@@ -639,7 +639,7 @@ def _read_token(node: Node) -> str:
     return token
 
 
-async def _serve(node: Gateway, token: str) -> None:
+async def _serve(node: Gateway, token: str, ssl_context) -> None:
     node._loop = asyncio.get_running_loop()
     node.server = GatewayServer(
         token=token,
@@ -650,10 +650,17 @@ async def _serve(node: Gateway, token: str) -> None:
         on_subscribe=node.on_client_subscribe,
         on_disconnect=node.on_client_disconnect,
     )
-    await node.server.serve(node.bind_address, node.port)
+    await node.server.serve(node.bind_address, node.port,
+                            ssl_context=ssl_context,
+                            ca_cert_path=os.environ.get('WHILL_TLS_CA') or None)
     node.get_logger().info(
-        f'ws://{node.bind_address}:{node.port} で待ち受け中 '
+        f'{tls.scheme(ssl_context)}://{node.bind_address}:{node.port} で待ち受け中 '
         f'(robot={node.robot_id}, mode={node.mode})')
+    if ssl_context is None:
+        # 平文でも動くが、iPad からは開けない（https に上げられる）。
+        node.get_logger().warning(
+            'TLS 未設定のため平文で待ち受ける。iPad から使うなら '
+            'WHILL_TLS_CERT / WHILL_TLS_KEY を設定すること（docs/runbook.md）')
     # サーバは close されるまで動き続ける。ここで無限に待つ。
     await asyncio.Event().wait()
 
@@ -662,6 +669,13 @@ def main(args=None) -> None:
     rclpy.init(args=args)
     node = Gateway()
     token = _read_token(node)
+    try:
+        ssl_context = tls.server_context()
+    except tls.TlsConfigError as exc:
+        # 指定されているのに平文に戻らない。黙って戻ると「https のつもりで
+        # http」になり、iPad からは原因の分からないエラーしか見えない。
+        node.get_logger().fatal(f'TLS の設定が不正なので起動しない: {exc}')
+        raise SystemExit(2) from None
 
     executor = SingleThreadedExecutor()
     executor.add_node(node)
@@ -671,7 +685,7 @@ def main(args=None) -> None:
     spinner.start()
 
     try:
-        asyncio.run(_serve(node, token))
+        asyncio.run(_serve(node, token, ssl_context))
     except KeyboardInterrupt:
         pass
     finally:

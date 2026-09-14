@@ -4,6 +4,8 @@ import {
   GatewayClient,
   RECONNECT_MAX_MS,
   backoffDelay,
+  socketScheme,
+  socketUrl,
 } from '../src/lib/gateway'
 import type { WebSocketLike } from '../src/lib/gateway'
 import type { ConnectionState } from '../src/lib/types'
@@ -258,5 +260,25 @@ describe('フレーム', () => {
 
     expect(h.sockets[0].closed).toBe(false)
     expect(h.client.isAuthenticated).toBe(true)
+  })
+})
+
+describe('WebSocket の scheme（#55）', () => {
+  it('https のページからは wss で繋ぐ', () => {
+    // https のページから平文の ws:// には繋げない（混在コンテンツ）。
+    // iPad は http を https に上げるので、iPad から使うときは必ずこちら。
+    expect(socketScheme('https:')).toBe('wss')
+    expect(socketUrl(8765, { protocol: 'https:', hostname: '172.20.10.2' }))
+      .toBe('wss://172.20.10.2:8765')
+  })
+
+  it('http のページからは ws で繋ぐ', () => {
+    expect(socketScheme('http:')).toBe('ws')
+    expect(socketUrl(8770, { protocol: 'http:', hostname: 'localhost' }))
+      .toBe('ws://localhost:8770')
+  })
+
+  it('ホスト名が無ければ 127.0.0.1', () => {
+    expect(socketUrl(8765, { protocol: 'http:', hostname: '' })).toBe('ws://127.0.0.1:8765')
   })
 })
