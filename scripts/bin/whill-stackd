@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# `whill-stackd` を uv の環境で動かす薄い入口。scripts/env.sh が PATH に入れる。
+#
+# services/.venv/bin を PATH に足さないのは、そこに venv の python3 もあるから。
+# 足すと ROS が使うシステムの python3 を隠し、rclpy が import できなくなる。
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+exec uv run --quiet --project "${root}/services" whill-stackd "$@"

@@ -41,36 +41,61 @@ ROS → 既存スタック → 本リポの順に source する。**順序を変
 
 ## gateway のトークン
 
-gateway は **`WHILL_GATEWAY_TOKEN` が無いと起動しない**（無認証で待ち受ける
+gateway と stackd は **`WHILL_GATEWAY_TOKEN` が無いと起動しない**（無認証で待ち受ける
 状態を作らないため）。8 文字以上。
 
+**トークンはファイルに 1 回だけ作り、毎回それを読む。** 起動のたびに乱数で作ると、
+iPad やブラウザに保存したトークンが毎回使えなくなる。
+
 ```bash
-export WHILL_GATEWAY_TOKEN=$(openssl rand -hex 16)
+# 初回だけ（自分だけが読める 600 で作る）
+umask 077; mkdir -p ~/.config/whill
+openssl rand -hex 16 > ~/.config/whill/gateway-token
+
+# 画面に入れるときに表示する
+cat ~/.config/whill/gateway-token
 ```
 
-**このトークンをリポジトリに書かないこと。** `docs/` に資格情報を置かない規約。
-研究室で共有するなら別の経路で渡す。
+- **このトークンをリポジトリに書かないこと。** `docs/` に資格情報を置かない規約。
+  研究室で共有するなら別の経路で渡す
+- 作り直したら、各端末でも入れ直すことになる（画面は「トークンが違う」と出して入力に戻る）
+- systemd で stackd を動かすときは、同じ値を `/etc/whill/stackd.env` に書く
 
 ## 起動
 
-```bash
-# mock (実機なしの既定)
-whill run --robot cr2-01 --mode mock
+**Claude Code とは別のターミナルで、自分で起動する。** 起動したターミナルは閉じずに
+置いておき、止めるときはそのターミナルで **Ctrl-C**。
 
+```bash
+cd ~/whill_platform
+source scripts/env.sh                                     # whill が使えるようになる
+export WHILL_GATEWAY_TOKEN=$(cat ~/.config/whill/gateway-token)
+whill run --robot cr2-01 --mode mock --gateway
+```
+
+`wss://0.0.0.0:8765 で待ち受け中` が出たら、ブラウザで `https://localhost:8765/`
+（iPad からは `https://<PC の IP>:8765/`）を開き、トークンを入れる。上部帯が
+「gateway 接続」になれば成功。stackd を起動していなければ「stackd 未接続」は正常。
+
+その他の起動のしかた（`--gateway` を付ければ画面から見られる）:
+
+```bash
 # camera も上げる (CPU を食う)
-whill run --robot cr2-01 --mode mock --camera
+whill run --robot cr2-01 --mode mock --gateway --camera
 
 # preset を当てる
-whill run --robot cr2-01 --mode mock --preset cautious
+whill run --robot cr2-01 --mode mock --gateway --preset cautious
 
 # bag 再生 (Phase 4)
-whill run --robot cr2-01 --mode replay --bag bags/2026-07-31-campus
+whill run --robot cr2-01 --mode replay --gateway --bag bags/2026-07-31-campus
 
 # 起動せずコマンドだけ見る
 whill run --robot cr2-01 --mode mock --dry-run
 ```
 
-`services/` の外から `whill` を叩くなら `uv run --project ~/whill_platform/services whill ...`。
+- `whill: コマンドが見つかりません` と出たら、そのターミナルで `source scripts/env.sh` をしていない
+- 前のスタックが残っていると gateway が 8765 番を取れず、スタックごと失敗して止まる（#49）。
+  前のターミナルで Ctrl-C したか確かめる
 
 ## stackd（他PC から起動・停止する）
 
