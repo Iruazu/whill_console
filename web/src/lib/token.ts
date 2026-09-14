@@ -41,3 +41,24 @@ export function clearToken(): void {
     // 消せなくても実害は無い
   }
 }
+
+/** gateway が受け付けるトークンの最短長。gateway / stackd の起動時の検査と揃える。 */
+export const MIN_TOKEN_LENGTH = 8
+
+/** 入力されたトークンを整える（#58）。
+ *
+ * tablet で 32 文字の 16 進を打つので、打ち間違いは普通に起きる。
+ * 送る前に分かるものはその場で言う。前後の空白（コピーで混ざりやすい）と、
+ * 途中の空白（4 文字ずつ区切って読んだものをそのまま打った場合）は落とす。
+ */
+export function normalizeToken(raw: string): { token: string; error: string | null } {
+  const token = raw.replace(/\s+/g, '')
+  if (!token) return { token, error: 'トークンを入れること' }
+  if (token.length < MIN_TOKEN_LENGTH) {
+    return {
+      token,
+      error: `短すぎる（${token.length} 文字）。gateway のトークンは ${MIN_TOKEN_LENGTH} 文字以上`,
+    }
+  }
+  return { token, error: null }
+}
