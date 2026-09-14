@@ -1276,3 +1276,82 @@ test.describe('console のスクリーンショット', () => {
     await expect(page.getByTestId('camera')).toHaveCount(0)
   })
 })
+
+test.describe('tf パネル（#51）', () => {
+  const feed = (page: import('@playwright/test').Page, frame: Record<string, unknown>) =>
+    page.evaluate(
+      (f) =>
+        (window as unknown as {
+          __whillIngest: (x: Record<string, unknown>) => void
+        }).__whillIngest(f),
+      frame,
+    )
+
+  /** 代表 bag を再生して一時停止したときに gateway が実際に出した形（2026-09-14）。 */
+  const tfFrame = (frozen: boolean) => {
+    const dynamic = (parent: string, child: string, source: string, hz: number) => ({
+      parent, child, static: false, expected: true, source,
+      age: frozen ? 4.4 : 0.03, rate_hz: frozen ? null : hz, level: frozen ? 'crit' : 'ok',
+    })
+    const fixed = (parent: string, child: string) => ({
+      parent, child, static: true, expected: child !== 'camera_link', source: '',
+      age: null, rate_hz: null, level: 'static',
+    })
+    const edges = [
+      dynamic('map', 'odom', 'scan-to-map localizer', 10),
+      dynamic('odom', 'base_link', 'EKF', 30),
+      fixed('base_link', 'camera_link'),
+      fixed('base_link', 'imu_link'),
+      fixed('base_link', 'velodyne'),
+    ]
+    return {
+      type: 'tf',
+      parents: Object.fromEntries(edges.map((e) => [e.child, e.parent])),
+      edges,
+      roots: ['map'],
+      missing: [
+        { parent: 'velodyne', child: 'camera_link', kind: 'static', source: '',
+          actual_parent: 'base_link' },
+        { parent: 'base_link', child: 'base_footprint', kind: 'static', source: '',
+          actual_parent: null },
+      ],
+      stamp: 1,
+    }
+  }
+
+  test('止まった辺を木と理由で出す', async ({ page }, testInfo) => {
+    await openWithToken(page)
+    await expect(page.getByTestId('tf')).toHaveCount(0)
+
+    await feed(page, tfFrame(false))
+    // 設定と bag の食い違いは注意（走行中の故障ではない）
+    await expect(page.getByTestId('tf-level')).toHaveText('注意')
+    await expect(page.getByTestId('tf-reasons')).toContainText('camera_link の親が base_link')
+
+    await feed(page, tfFrame(true))
+    await expect(page.getByTestId('tf-level')).toHaveText('異常')
+    await expect(page.getByTestId('tf-reasons')).toContainText(
+      'map → odom が止まっている 4.4 秒（scan-to-map localizer）')
+
+    await page.getByTestId('tf-toggle').click()
+    await expect(page.getByTestId('tf-frame-velodyne')).toBeVisible()
+    await page.getByTestId('tf').screenshot({
+      path: `${SHOT_DIR}/${testInfo.project.name}-tf.png`,
+    })
+  })
+
+  test('ops では止まったときだけ一行で出す', async ({ page }, testInfo) => {
+    await openWithToken(page, 'ops')
+    const healthy = tfFrame(false)
+    await feed(page, { ...healthy, missing: [] })
+    await expect(page.getByTestId('tf-alert')).toHaveCount(0)
+    await expect(page.getByTestId('tf')).toHaveCount(0)
+
+    await feed(page, tfFrame(true))
+    await expect(page.getByTestId('tf-alert')).toContainText('map → odom が止まっている')
+    await page.screenshot({
+      path: `${SHOT_DIR}/${testInfo.project.name}-tf-ops.png`,
+      fullPage: true,
+    })
+  })
+})

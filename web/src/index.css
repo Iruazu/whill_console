@@ -620,3 +620,17 @@ body {
 /* 止まった画像を最新に見せない */
 .camera-frame.stale img { opacity: 0.4; filter: grayscale(0.6); }
 .camera-frame.stale figcaption { color: var(--warn); }
+
+/* ---- TF（#51） ------------------------------------------------------- */
+
+.panel.tf { flex: none; }
+.panel.tf.ops { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.panel.tf.ops.level-warn { border-left: 3px solid var(--warn); }
+.panel.tf.ops.level-crit { border-left: 3px solid var(--crit); }
+.tf-reasons { margin: 6px 0 0; padding-left: 18px; font-size: 12px; }
+.tf-tree, .tf-tree ul { list-style: none; margin: 0; padding-left: 14px; }
+.tf-tree { margin-top: 8px; padding-left: 0; font-size: 12px; }
+.tf-tree ul { border-left: 1px solid var(--border); }
+.tf-row { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; flex-wrap: wrap; }
+.tf-frame { font-family: ui-monospace, monospace; }
+.badge.level-static, .badge.level-unjudged { color: var(--muted); border-color: var(--border); }

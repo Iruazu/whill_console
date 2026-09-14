@@ -106,6 +106,21 @@ derived_telemetry:
     # 自分の位置を分かっているかの指標。ops でも出す。
     ops: true
 
+# TF の期待値（#51）。tf パネルが「無い」「止まった」を判定する正。
+#
+# 静的な辺は個体 yaml の tf_static が正なので、ここには動的な辺だけ書く。
+# **動的な辺が止まるのは、実機で最も再発している故障（TF 凍結 → Nav2 abort）。**
+#
+# 閾値は代表 bag（2026-07-31、健全）の実測から決めた
+# （docs/measurements/2026-09-14-tf-intervals.md）:
+#   map -> odom        10 Hz、更新間隔 中央 0.102 s、最大 0.192 s
+#   odom -> base_link  30 Hz、更新間隔 中央 0.033 s、最大 0.047 s
+# 健全時の最大の 5 倍前後で warn、それより十分長く途絶えたら crit。
+tf:
+  dynamic:
+    - {parent: map,  child: odom,      source: scan-to-map localizer, warn_sec: 1.0, crit_sec: 3.0}
+    - {parent: odom, child: base_link, source: EKF,                   warn_sec: 0.5, crit_sec: 2.0}
+
 # モード別に起動するものの宣言。whill_cli の --mode がこれを引く。
 modes:
   real:

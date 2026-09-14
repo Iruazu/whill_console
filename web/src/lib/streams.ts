@@ -17,6 +17,7 @@ export const DEFAULT_STREAMS = [
   'replay',
   'telemetry',
   'dispatch_state',
+  'tf',
 ] as const
 
 /** 画像は帯域を食うので既定に入れない。camera パネルを開いているあいだだけ足す。 */

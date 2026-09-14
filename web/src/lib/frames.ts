@@ -16,6 +16,8 @@ import type {
   TelemetryDriver,
   TelemetryFrame,
   TelemetryItem,
+  TfEdge,
+  TfMissing,
   TfSummary,
   Waypoint,
   VirtualObstacle,
@@ -431,6 +433,9 @@ export function applyFrame(
           receivedAt: stamp,
           tf: {
             parents: (frame.parents as Record<string, string>) ?? {},
+            edges: (frame.edges as TfEdge[]) ?? [],
+            roots: (frame.roots as string[]) ?? [],
+            missing: (frame.missing as TfMissing[]) ?? [],
             stamp: num(frame.stamp),
           },
         },

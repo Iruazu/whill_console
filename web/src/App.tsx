@@ -12,6 +12,7 @@ import { DispatchPanel } from './panels/DispatchPanel'
 import { DriversPanel } from './panels/DriversPanel'
 import { ParamsPanel } from './panels/ParamsPanel'
 import { ReplayBar } from './panels/ReplayBar'
+import { TfPanel } from './panels/TfPanel'
 import { TokenGate } from './panels/TokenGate'
 import { TopBar } from './panels/TopBar'
 import { useConsoleStore } from './state/store'
@@ -89,6 +90,8 @@ export function App() {
           {shows.showDispatch && <DispatchPanel send={send} />}
           {/* telemetry 宣言があるモードでのみ描かれる。 */}
           <DriversPanel />
+          {/* dev は木、ops は止まったときだけ一行。 */}
+          <TfPanel />
           {shows.showCamera && <CameraPanel setImageSubscribed={setImageSubscribed} />}
           {/* 現場で 47 本のスライダーは要らない。触れてしまうほうが危ない。 */}
           {shows.showParams && <ParamsPanel send={send} />}

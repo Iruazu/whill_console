@@ -56,14 +56,19 @@ from whill_gateway.replay import ReplayProgress, read_bag_info
 from whill_gateway.safety import ManualControl
 from whill_gateway.server import Client, GatewayServer
 from whill_gateway.telemetry import Telemetry
+from whill_gateway.tf_tree import TfTree, load_expectations
 from whill_params import registry as reg
 from whill_params.descriptors import declare_from_registry
 
 STATUS_PERIOD_SEC = 1.0
 """`status` フレームの配信周期。上部帯の更新なので 1 Hz で足りる。"""
 
-TF_SUMMARY_PERIOD_SEC = 2.0
-"""tf 要約の配信周期。中身が変わったときだけ実際に流れる。"""
+TF_SUMMARY_PERIOD_SEC = 1.0
+"""tf 要約の配信周期。変化が無くても流す（止まったことを伝えるため。#51）。
+
+いちばん厳しい閾値（odom -> base_link の warn 0.5 s）より細かくはしない。
+画面が知りたいのは「止まったか」で、1 秒遅れて気づけば足りる。
+"""
 
 REPLAY_PERIOD_SEC = 0.25
 """再生位置の配信周期。
@@ -140,6 +145,7 @@ class Gateway(Node):
             scan_hz=float(self.get_parameter('scan_publish_rate').value),
             image_hz=float(self.get_parameter('image_publish_rate').value),
             max_cells=int(self.get_parameter('costmap_max_cells').value),
+            tf_tree=TfTree(*load_expectations(self.registry.base, self.registry.robot)),
         )
         # ---- ドライバのテレメトリ ------------------------------------------
         # cr2-base.yaml の telemetry 宣言どおりに購読する。閾値の判定も

@@ -176,8 +176,11 @@ DEFAULT_STREAMS = frozenset({
     # バッテリーと localization の健全性は、繋いだら必ず見えるべきもの。
     MSG_TELEMETRY,
     MSG_DISPATCH_STATE,
+    # TF の途絶は Nav2 が止まる一番多い原因。パネルを開いたときだけ購読すると、
+    # 開いていない端末では止まったことに気づけない（#51）。1 Hz・1 通約 1.1 KB。
+    MSG_TF,
 })
-"""何も指定せずに繋いだときに流れるもの。画像と tf は明示的に要求させる。"""
+"""何も指定せずに繋いだときに流れるもの。画像は明示的に要求させる。"""
 
 
 class ProtocolError(Exception):

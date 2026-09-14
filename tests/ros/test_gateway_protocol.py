@@ -79,10 +79,17 @@ def test_subscribe_rejects_non_list():
 
 
 def test_default_streams_exclude_expensive_ones():
-    """画像と tf は明示的に要求させる。既定で流すと帯域を無駄にする。"""
+    """画像は明示的に要求させる。既定で流すと帯域を無駄にする。"""
     assert protocol.MSG_IMAGE not in protocol.DEFAULT_STREAMS
-    assert protocol.MSG_TF not in protocol.DEFAULT_STREAMS
     assert protocol.MSG_COSTMAP in protocol.DEFAULT_STREAMS
+
+
+def test_tf_is_streamed_by_default():
+    """TF の途絶はパネルを開いていない端末にも届くこと（#51）。
+
+    以前は明示的な購読が要り、しかも親子が変わったときしか流れなかった。
+    """
+    assert protocol.MSG_TF in protocol.DEFAULT_STREAMS
 
 
 def test_streams_are_all_server_messages():

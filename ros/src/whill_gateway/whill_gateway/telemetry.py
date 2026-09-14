@@ -29,6 +29,7 @@ from sensor_msgs.msg import CompressedImage, LaserScan
 from tf2_msgs.msg import TFMessage
 
 from whill_gateway import costmap_codec, protocol
+from whill_gateway.tf_tree import TfTree
 
 # Nav2 の costmap は latched (transient local) で出る。既定の volatile で
 # 購読すると、接続前に publish された全量を取りこぼして永久に絵が出ない。
@@ -110,7 +111,7 @@ class Telemetry:
     def __init__(self, node: Node, emit: Callable[[dict[str, Any]], None],
                  *, costmap_hz: float, pose_hz: float, scan_hz: float,
                  image_hz: float, max_cells: int = costmap_codec.DEFAULT_MAX_CELLS,
-                 wall_clock=None) -> None:
+                 wall_clock=None, tf_tree: TfTree | None = None) -> None:
         self.max_cells = max_cells
         self.node = node
         # レート制限は**実時間**で測る。ブラウザへの帯域を守るためのものなので、
@@ -138,8 +139,7 @@ class Telemetry:
         self._latest_pose: dict[str, Any] | None = None
         self._latest_path: dict[str, Any] | None = None
         self._latest_scan: dict[str, Any] | None = None
-        self._tf_parents: dict[str, str] = {}
-        self._tf_dirty = False
+        self._tf = tf_tree if tf_tree is not None else TfTree()
 
         self._subscribe()
 
@@ -170,8 +170,13 @@ class Telemetry:
 
         # tf は要約だけ流す。変換行列そのものは送らない（3D は Foxglove に
         # 委譲する方針。設計原則 2）。
-        node.create_subscription(TFMessage, '/tf', self._on_tf, 50)
-        node.create_subscription(TFMessage, '/tf_static', self._on_tf, STATIC_TF_QOS)
+        # /tf と /tf_static は分けて受ける。止まっていて正常な辺（static）と
+        # 止まったら故障の辺を区別するため（#51）。
+        node.create_subscription(
+            TFMessage, '/tf', lambda msg: self._on_tf(msg, static=False), 50)
+        node.create_subscription(
+            TFMessage, '/tf_static', lambda msg: self._on_tf(msg, static=True),
+            STATIC_TF_QOS)
 
         # **best-effort で購読する**（#52）。depth だけ渡すと既定の RELIABLE になり、
         # best-effort で出すカメラから 1 通も届かない。Phase 2 からずっとそうで、
@@ -320,29 +325,26 @@ class Telemetry:
 
     # ---- tf / 診断 ---------------------------------------------------------
 
-    def _on_tf(self, msg: TFMessage) -> None:
-        """親子関係だけ覚える。変わったときだけ流す。
+    def _on_tf(self, msg: TFMessage, *, static: bool) -> None:
+        """辺ごとに、最後に届いた実時間を覚える（`tf_tree.py`）。
 
-        毎フレーム送ると 50 Hz で同じ内容が流れる。tf パネルが見たいのは
-        「どのフレームがどこに繋がっているか」であって、値の時系列ではない。
+        到着の時刻は **実時間** で取る。止まったかどうかを見たいので、bag の
+        stamp や sim 時計では測らない（sim 時計ごと止まると古さが 0 のまま）。
         """
+        now = self._now()
         for transform in msg.transforms:
-            child = transform.child_frame_id
-            parent = transform.header.frame_id
-            if self._tf_parents.get(child) != parent:
-                self._tf_parents[child] = parent
-                self._tf_dirty = True
+            self._tf.observe(transform.header.frame_id, transform.child_frame_id,
+                             static=static, wall_sec=now)
 
     def publish_tf_summary(self) -> None:
-        """タイマーから呼ぶ。変化が無ければ何もしない。"""
-        if not self._tf_dirty:
+        """タイマーから呼ぶ。**変化が無くても流す。**
+
+        以前は親子関係が変わったときだけ流していた。TF が止まっても親子関係は
+        変わらないので、止まったことが画面に届かなかった。
+        """
+        if self._tf.is_empty and not self._tf.expects_anything:
             return
-        self._tf_dirty = False
-        self.emit({
-            'type': protocol.MSG_TF,
-            'parents': dict(self._tf_parents),
-            'stamp': self._now(),
-        })
+        self.emit(self._tf.frame(self._now()))
 
     def snapshot(self) -> list[dict[str, Any]]:
         """繋いだ直後のクライアントへ配る、いま持っている状態。
@@ -361,12 +363,8 @@ class Telemetry:
             frames.append(self._latest_path)
         if self._latest_scan is not None:
             frames.append(self._latest_scan)
-        if self._tf_parents:
-            frames.append({
-                'type': protocol.MSG_TF,
-                'parents': dict(self._tf_parents),
-                'stamp': self._now(),
-            })
+        if not self._tf.is_empty:
+            frames.append(self._tf.frame(self._now()))
         return frames
 
     def _on_diagnostics(self, msg: DiagnosticArray) -> None:
