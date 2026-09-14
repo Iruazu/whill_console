@@ -1,0 +1,47 @@
+# PR に付けるラベルを、変更したファイルとブランチ名から決める。
+# 使っているのは .github/workflows/pr-labels.yml。
+#
+# 手で付けていると付け忘れる。付け忘れたラベルで絞り込むと、PR が「無かった」
+# ことになる。
+#
+# phase:* / blocked:* / needs:* は変更内容からは決められないので、本文の
+# 「Closes #N」の issue からコピーする（同じ workflow の別ジョブ）。
+
+# ---- 種類（ブランチ名の接頭辞） -------------------------------------------
+'type:feat':
+  - head-branch: ['^feat/']
+'type:fix':
+  - head-branch: ['^fix/']
+'type:docs':
+  - head-branch: ['^docs/']
+'type:chore':
+  - head-branch: ['^chore/']
+'type:test':
+  - head-branch: ['^test/']
+
+# ---- 場所（変更したファイル） ---------------------------------------------
+'area:gateway':
+  - changed-files:
+      - any-glob-to-any-file: ['ros/src/whill_gateway/**']
+'area:ros':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'ros/src/whill_bringup/**'
+          - 'ros/src/whill_mock_drivers/**'
+          - 'ros/src/whill_costmap_plugins/**'
+          - 'ros/src/whill_msgs/**'
+'area:config':
+  - changed-files:
+      - any-glob-to-any-file: ['config/**', 'ros/src/whill_params/**']
+'area:web':
+  - changed-files:
+      - any-glob-to-any-file: ['web/src/**', 'web/tests/**', 'web/*.ts', 'web/package.json']
+'area:services':
+  - changed-files:
+      - any-glob-to-any-file: ['services/**']
+'area:docs':
+  - changed-files:
+      - any-glob-to-any-file: ['docs/**/*.md', '*.md']
+'area:ci':
+  - changed-files:
+      - any-glob-to-any-file: ['.github/**', 'scripts/test.sh']

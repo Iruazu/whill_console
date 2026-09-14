@@ -1,0 +1,67 @@
+name: PR labels
+
+# PR にラベルを自動で付ける。
+#   area:* / type:*        … 変更したファイルとブランチ名（.github/labeler.yml）
+#   phase:* / blocked:* 等 … 本文の「Closes #N」の issue からコピー
+#
+# 付けるだけで外さない（sync-labels: false）。人が手で付けたラベルを消さないため。
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  paths-and-branch:
+    name: 変更箇所とブランチ名から
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/labeler@v7
+        with:
+          sync-labels: false
+
+  from-linked-issue:
+    name: 紐づく issue から
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            // 「Closes #N」「Fixes #N」「Resolves #N」を拾う。
+            const body = context.payload.pull_request.body || ''
+            const numbers = [...body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi)]
+              .map((m) => Number(m[1]))
+            if (numbers.length === 0) {
+              core.info('紐づく issue が無い（本文に Closes #N が無い）')
+              return
+            }
+            // 変更内容からは決められない分類だけ写す。type:* は PR 側（ブランチ名）が正。
+            const copyable = /^(phase:|blocked:|needs:)/
+            const labels = new Set()
+            for (const issue_number of numbers) {
+              try {
+                const { data } = await github.rest.issues.get({ ...context.repo, issue_number })
+                if (data.pull_request) continue   // PR 番号を指していたら無視
+                for (const label of data.labels) {
+                  const name = typeof label === 'string' ? label : label.name
+                  if (copyable.test(name)) labels.add(name)
+                }
+              } catch (error) {
+                core.warning(`#${issue_number} を読めない: ${error.message}`)
+              }
+            }
+            if (labels.size === 0) return
+            await github.rest.issues.addLabels({
+              ...context.repo,
+              issue_number: context.payload.pull_request.number,
+              labels: [...labels],
+            })
+            core.info(`付けた: ${[...labels].join(', ')}`)
