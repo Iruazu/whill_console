@@ -24,10 +24,13 @@ jobs:
     name: services (config / CLI)
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: uv を入れる
-        uses: astral-sh/setup-uv@v5
+        # setup-uv は v10 のような動く major タグを出していない（v10.1.0 のような
+        # 固定のタグだけ）。@v10 と書くと「unable to find version」で落ちた。
+        # 上げるのは Dependabot に任せる。
+        uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
           cache-dependency-glob: services/uv.lock
@@ -59,9 +62,9 @@ jobs:
     name: web (typecheck / vitest / screenshots)
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -101,7 +104,7 @@ jobs:
       # CI が撮ったものをそのまま拾えるようにしておく。
       - name: スクリーンショットを artifact に上げる
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: screenshots
           path: docs/screenshots/
@@ -110,7 +113,7 @@ jobs:
 
       - name: 失敗時の trace
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-trace
           path: web/test-results/
@@ -121,7 +124,7 @@ jobs:
     runs-on: ubuntu-22.04
     container: ros:humble-ros-base
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: colcon と pytest を入れる
         run: |

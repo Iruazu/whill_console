@@ -1,0 +1,21 @@
+# GitHub Actions の版を追いかける。
+#
+# 放っておくと古い版が Node の世代交代で警告を出し、いずれ動かなくなる
+# （2026-09 時点で actions/checkout@v4 が「Node 20 は非推奨、Node 24 で強制実行」と
+# 警告していた）。月に 1 回、まとめて 1 本の PR にする。
+#
+# npm / uv の依存はここで追わない。ROS の Python と揃える制約（numpy<2 など）や
+# pnpm の供給網ポリシー（docs/open-questions.md K10）があり、自動で上げると
+# ローカルで再現できない赤を作りやすい。上げるときは人が判断する。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']
+    labels: ['type:chore', 'area:ci']
+    commit-message:
+      prefix: 'chore(ci)'

@@ -354,6 +354,35 @@ gateway が落ちても自動で繋ぎ直す（指数バックオフ、上限 10
 **認証に失敗したときは再試行しない** — トークンが違うまま叩き続けても直らず、
 原因が画面から消えるだけなので。
 
+## GitHub の運用（PR・ラベル・レビュー）
+
+- **PR の本文はテンプレートから始まる**（`.github/pull_request_template.md`）。
+  目的 / 変更点 / 判断したこと / 検証方法 / スクリーンショット / 実機検証待ち。
+  該当しない項目は消さずに「なし」と書く
+- **ラベルは自動で付く**（`.github/workflows/pr-labels.yml`）
+  - `type:*`: ブランチ名の接頭辞（`feat/` `fix/` `docs/` `chore/` `test/`）
+  - `area:*`: 変更したファイル（`.github/labeler.yml`）
+  - `phase:*` `blocked:*` `needs:*`: 本文の `Closes #N` の issue からコピー
+  - 付けるだけで外さない。手で付けたラベルは残る
+- **マージしたブランチは GitHub 上で自動で消える**（リポジトリ設定）。手元のブランチは
+  `git fetch --prune` で追随する
+- **Actions の版は Dependabot が月に 1 回まとめて上げる**（`.github/dependabot.yml`）
+
+### レビューを依頼する（任意、自分のアカウントで）
+
+```bash
+scripts/request-review.sh <PR 番号> copilot   # gh pr edit --add-reviewer @copilot
+scripts/request-review.sh <PR 番号> devin     # PR に /devin review とコメント
+```
+
+**自動では回さない。** どちらも依頼した人のプランや利用枠を消費し、CI の bot からは
+あなたのプランを使えないため。前提（2026-09 時点）:
+
+- Copilot: **Copilot Free には含まれない**。Copilot Student（認証済みの学生は無料）か
+  Pro 以上が要る。2026-06 から GitHub Actions の分数も消費する
+- Devin: Devin のアカウントと、この private repo への Devin の GitHub App が要る。
+  レビューは ACU を消費する
+
 ## テスト
 
 ```bash
