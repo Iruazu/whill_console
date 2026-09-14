@@ -38,6 +38,8 @@ rvize / gazebo に代わる WHILL CR 専用の Web コンソールを作り、si
 | 認証 | **固定トークン**（`WHILL_GATEWAY_TOKEN`）+ LAN 限定バインド | これ以上の防御は無い前提で運用する。 |
 | systemd 化 | **Phase 2 でユニット作成、enable は実機復帰後** | 実機なしで enable すると「動いているつもり」になる。 |
 | 既存 Layer D | **Phase 2 は include、移植は実機復帰後** | 既存スタックを壊さない。 |
+| Web 画面の配信 | **gateway が `pnpm build` の成果物を 8765 番で配る**（#56）。開発サーバ（Vite、5173）は画面のコードを触るときだけ | 現場で起動するものを減らす。画面と WebSocket が同じオリジン・ポート・証明書になる。WebSocket は `/` へのアップグレード要求で振り分け、CLI の接続先を変えない。 |
+| 屋外の接続 | **PC をアクセスポイントにしない。iPhone のインターネット共有に PC と iPad をつなぐ**。https / wss は研究室 CA（#55） | PC のインターネット（Claude Code・GitHub）を止めない。iPad は http を https に上げるので TLS が要る。2026-09-14 に iPad の Safari で確認。 |
 
 ## 4. フェーズ計画
 
