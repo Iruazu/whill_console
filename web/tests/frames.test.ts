@@ -582,3 +582,24 @@ describe('派生テレメトリ', () => {
     expect(state.telemetry?.derived[0].level).toBe('unknown')
   })
 })
+
+describe('カメラ画像（#52）', () => {
+  it('取り込んで受信時刻を残す', () => {
+    const state = apply(emptyFrameState(), {
+      type: 'image', format: 'jpeg', data: 'AAAA', stamp: 12,
+    }, 999)
+    expect(state.image).toEqual({ format: 'jpeg', data: 'AAAA', stamp: 12 })
+    expect(state.receivedAt.image).toBe(999)
+  })
+
+  it('空の画像で直前の 1 枚を消さない', () => {
+    // 壊れた 1 通で画面が真っ白になるのを避ける
+    let state = apply(emptyFrameState(), { type: 'image', format: 'jpeg', data: 'AAAA' })
+    state = apply(state, { type: 'image', format: 'jpeg', data: '' })
+    expect(state.image?.data).toBe('AAAA')
+  })
+
+  it('届く前は null', () => {
+    expect(emptyFrameState().image).toBeNull()
+  })
+})

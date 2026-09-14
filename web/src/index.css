@@ -596,3 +596,27 @@ body {
   color: #d07ce0;
   border-color: #d07ce0;
 }
+
+/* ---- カメラ（#52） ---------------------------------------------------- */
+
+.panel.camera { flex: none; }
+.camera-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.camera-toggle h2 { margin: 0; }
+.camera-body { margin-top: 8px; }
+.camera-frame { margin: 0; display: grid; gap: 4px; }
+.camera-frame img { width: 100%; height: auto; border-radius: 4px; background: var(--bg); }
+.camera-frame figcaption { font-size: 12px; color: var(--muted); }
+/* 止まった画像を最新に見せない */
+.camera-frame.stale img { opacity: 0.4; filter: grayscale(0.6); }
+.camera-frame.stale figcaption { color: var(--warn); }

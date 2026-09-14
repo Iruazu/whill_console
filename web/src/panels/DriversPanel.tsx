@@ -6,6 +6,7 @@ import {
   formatAge,
   formatValue,
   isDown,
+  isOffByDeclaration,
   summaryItems,
   worstLevel,
 } from '../lib/telemetry'
@@ -116,9 +117,9 @@ function DriverCard({ driver }: { driver: TelemetryDriver }) {
           <span className="badge state-down" data-testid={`driver-down-${driver.driver}`}>
             起動していない
           </span>
-        ) : !driver.expected ? (
+        ) : isOffByDeclaration(driver) ? (
           // このモードでは起動しない宣言のもの（realsense など）。
-          // 赤くしない。起動していなくて当たり前。
+          // 赤くしない。起動していなくて当たり前。値が来ていれば普通に出す。
           <span className="badge" data-testid={`driver-off-${driver.driver}`}>
             対象外
           </span>

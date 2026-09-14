@@ -6,6 +6,7 @@ import {
   formatAge,
   formatValue,
   isDown,
+  isOffByDeclaration,
   summaryItems,
   worstLevel,
 } from '../src/lib/telemetry'
@@ -185,5 +186,26 @@ describe('棒グラフ', () => {
 
   it('値が無ければ棒にしない', () => {
     expect(barRatio(item({ value: null }))).toBeNull()
+  })
+})
+
+describe('宣言上の対象外（#52）', () => {
+  it('起動しない宣言で値も来ていなければ対象外', () => {
+    expect(isOffByDeclaration({
+      driver: 'realsense', expected: false, items: [item({ level: 'unknown' })],
+    })).toBe(true)
+  })
+
+  it('宣言上は対象外でも、値が来ていれば普通に出す', () => {
+    // --camera で起動したのに「対象外」と出すと、フレームレートが隠れる
+    expect(isOffByDeclaration({
+      driver: 'realsense', expected: false, items: [item({ level: 'ok' })],
+    })).toBe(false)
+  })
+
+  it('起動する宣言のドライバは対象外にしない', () => {
+    expect(isOffByDeclaration({
+      driver: 'velodyne', expected: true, items: [item({ level: 'unknown' })],
+    })).toBe(false)
   })
 })

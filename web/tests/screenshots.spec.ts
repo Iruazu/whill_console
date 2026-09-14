@@ -1183,4 +1183,96 @@ test.describe('console のスクリーンショット', () => {
     expect(await page.evaluate(() => window.localStorage.getItem('whill.gateway.token')))
       .toBeNull()
   })
+
+  // ---- カメラ（#52） --------------------------------------------------------
+
+  /** 購読したときだけ画像を送る偽の gateway。送られた subscribe を記録する。 */
+  const fakeCameraGateway = (page: import('@playwright/test').Page) =>
+    page.addInitScript(() => {
+      // 1x1 の PNG
+      const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+      const w = window as unknown as {
+        __subs: string[][]; __cameraOn: boolean; WebSocket: unknown
+      }
+      w.__subs = []
+      w.__cameraOn = true
+      class FakeSocket {
+        onopen: (() => void) | null = null
+        onmessage: ((e: { data: string }) => void) | null = null
+        onerror: (() => void) | null = null
+        onclose: (() => void) | null = null
+        private timer: number | null = null
+        constructor(public url: string) {
+          setTimeout(() => this.onopen?.(), 10)
+        }
+        private reply(frame: unknown) {
+          this.onmessage?.({ data: JSON.stringify(frame) })
+        }
+        send(raw: string) {
+          const frame = JSON.parse(raw)
+          if (frame.type === 'auth') {
+            this.reply({ type: 'hello', authenticated: true, robot_id: 'cr2-01', mode: 'mock' })
+            this.reply({ type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_active: true,
+                         estop: false, clients: 1, stamp: 1 })
+          }
+          if (frame.type === 'subscribe' && this.url.includes('8765')) {
+            w.__subs.push(frame.streams)
+            if (this.timer) window.clearInterval(this.timer)
+            this.timer = null
+            if (frame.streams.includes('image')) {
+              const push = () => {
+                if (w.__cameraOn) {
+                  this.reply({ type: 'image', format: 'png', data: PNG, stamp: Date.now() / 1000 })
+                }
+              }
+              push()
+              this.timer = window.setInterval(push, 300)
+            }
+          }
+        }
+        close() { this.onclose?.() }
+      }
+      w.WebSocket = FakeSocket
+    })
+
+  test('カメラは開いたときだけ購読し、閉じたら外す', async ({ page }, testInfo) => {
+    await fakeCameraGateway(page)
+    await openWithToken(page, 'dev')
+    await expect(page.getByTestId('connection')).toHaveText(/gateway 接続/)
+    // 閉じたままでは画像を購読しない（帯域）
+    await expect(page.getByTestId('camera-image')).toHaveCount(0)
+    expect((await page.evaluate(() => (window as any).__subs)).flat()).not.toContain('image')
+
+    await page.getByTestId('camera-toggle').click()
+    await expect(page.getByTestId('camera-image')).toBeVisible()
+    await expect(page.getByTestId('camera-age')).toHaveText('最新')
+    const afterOpen = await page.evaluate(() => (window as any).__subs.at(-1))
+    expect(afterOpen).toContain('image')
+    // 画像を足しても既定のものは落とさない
+    expect(afterOpen).toContain('telemetry')
+    expect(afterOpen).toContain('dispatch_state')
+    await page.screenshot({ path: `${SHOT_DIR}/${testInfo.project.name}-camera.png`, fullPage: true })
+
+    await page.getByTestId('camera-toggle').click()
+    const afterClose = await page.evaluate(() => (window as any).__subs.at(-1))
+    expect(afterClose).not.toContain('image')
+    expect(afterClose).toContain('telemetry')
+  })
+
+  test('カメラが止まったら最後の画像を古いと分かる形で出す', async ({ page }) => {
+    await fakeCameraGateway(page)
+    await openWithToken(page, 'dev')
+    await page.getByTestId('camera-toggle').click()
+    await expect(page.getByTestId('camera-age')).toHaveText('最新')
+
+    await page.evaluate(() => { (window as any).__cameraOn = false })
+    // 3 秒で古いとみなす（IMAGE_STALE_MS）
+    await expect(page.getByTestId('camera-age')).toContainText('秒前の画像', { timeout: 6000 })
+  })
+
+  test('ops にはカメラを出さない', async ({ page }) => {
+    await openWithToken(page, 'ops')
+    await expect(page.getByTestId('topbar')).toBeVisible()
+    await expect(page.getByTestId('camera')).toHaveCount(0)
+  })
 })

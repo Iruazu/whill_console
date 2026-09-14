@@ -173,9 +173,14 @@ class Telemetry:
         node.create_subscription(TFMessage, '/tf', self._on_tf, 50)
         node.create_subscription(TFMessage, '/tf_static', self._on_tf, STATIC_TF_QOS)
 
+        # **best-effort で購読する**（#52）。depth だけ渡すと既定の RELIABLE になり、
+        # best-effort で出すカメラから 1 通も届かない。Phase 2 からずっとそうで、
+        # 実測で ROS 側 6 Hz・WebSocket 0 通だった。/scan と同じ理由で揃える。
+        # best-effort の購読は reliable の publisher とも繋がるので、ドライバの
+        # 設定がどちらでも届く。
         node.create_subscription(
             CompressedImage, '/camera/camera/color/image_raw/compressed',
-            self._on_image, 5)
+            self._on_image, SENSOR_QOS)
 
     def set_rates(self, *, costmap_hz: float, pose_hz: float, scan_hz: float,
                   image_hz: float) -> None:

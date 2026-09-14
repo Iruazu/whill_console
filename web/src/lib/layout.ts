@@ -45,6 +45,8 @@ export interface LayoutDefaults {
   showDispatch: boolean
   /** ドライバの全項目を出すか。false なら主要テレメトリだけ。 */
   showAllTelemetry: boolean
+  /** カメラを出すか（#52）。運用中に見るものではない（#43 の主要テレメトリの考え方）。 */
+  showCamera: boolean
 }
 
 export const LAYOUT_DEFAULTS: Record<Layout, LayoutDefaults> = {
@@ -54,6 +56,7 @@ export const LAYOUT_DEFAULTS: Record<Layout, LayoutDefaults> = {
     showParams: true,
     showDispatch: true,
     showAllTelemetry: true,
+    showCamera: true,
   },
   ops: {
     followRobot: true,
@@ -63,6 +66,7 @@ export const LAYOUT_DEFAULTS: Record<Layout, LayoutDefaults> = {
     showDispatch: true,
     // 電流や温度は切り分けのための数字。運用中に見るものではない。
     showAllTelemetry: false,
+    showCamera: false,
   },
 }
 
