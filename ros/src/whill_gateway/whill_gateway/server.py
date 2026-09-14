@@ -16,7 +16,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from whill_gateway import protocol
+from whill_gateway import protocol, web_static
 
 LOGGER = logging.getLogger('whill_gateway.server')
 
@@ -271,7 +271,8 @@ class GatewayServer:
     # ---- 起動 --------------------------------------------------------------
 
     async def serve(self, host: str, port: int, *, ssl_context: Any = None,
-                    ca_cert_path: str | None = None) -> Any:
+                    ca_cert_path: str | None = None,
+                    web_root: Any = None) -> Any:
         """aiohttp で待ち受ける。
 
         websockets ライブラリを使っていない理由は ADR-0003 を参照。要約すると、
@@ -294,14 +295,21 @@ class GatewayServer:
                 heartbeat=20.0,
                 compress=True,
             )
+            if not ws.can_prepare(request).ok:
+                # WebSocket のアップグレード要求でなければ画面を返す（#56）。
+                # 同じ `/` で分けるのは、CLI や既存の接続先を変えないため。
+                return await static(request)
             await ws.prepare(request)
             await self.handle(_AiohttpSocket(ws, request))
             return ws
 
+        static = _static_handler(web_root)
         app = web.Application()
         app.router.add_get('/', _handler)
         if ssl_context is not None and ca_cert_path:
             app.router.add_get(CA_CERT_ROUTE, _ca_cert_handler(ca_cert_path))
+        # 画面のファイル（assets/ など）。CA 証明書のルートより後に登録する。
+        app.router.add_get('/{tail:.+}', static)
         runner = web.AppRunner(app, access_log=None)
         await runner.setup()
         site = web.TCPSite(runner, host, port, ssl_context=ssl_context)
@@ -309,6 +317,11 @@ class GatewayServer:
         self._server = runner
         LOGGER.info('待ち受け開始: %s://%s:%d',
                     'wss' if ssl_context is not None else 'ws', host, port)
+        if web_static.is_built(web_root):
+            LOGGER.info('画面を配信する: %s', web_root)
+        else:
+            LOGGER.warning('画面が未ビルド（%s）。`cd web && pnpm build` するまで '
+                           '`/` は案内のページを返す', web_root)
         return runner
 
     async def close(self) -> None:
@@ -347,6 +360,27 @@ def _ca_cert_handler(path: str):
             return web.Response(status=500, text='設定の誤り: 鍵は配らない')
         # この Content-Type だと iOS がプロファイルのインストールを案内する。
         return web.Response(body=body, content_type='application/x-x509-ca-cert')
+
+    return _handler
+
+
+def _static_handler(web_root):
+    """画面のファイルを返すハンドラ（#56）。判断は web_static に閉じてある。"""
+    from aiohttp import web
+
+    async def _handler(request):
+        if not web_static.is_built(web_root):
+            if request.path in ('', '/'):
+                return web.Response(
+                    status=503, content_type='text/html',
+                    text=web_static.NOT_BUILT_HTML.format(root=web_root or '（未設定）'))
+            return web.Response(status=404, text='not found')
+        file = web_static.safe_file(web_root, request.path)
+        if file is None:
+            return web.Response(status=404, text='not found')
+        response = web.FileResponse(file)
+        response.headers['Cache-Control'] = web_static.cache_control(web_root, file)
+        return response
 
     return _handler
 

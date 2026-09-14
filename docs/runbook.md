@@ -173,13 +173,31 @@ whill topics --mode mock
 
 ## Web コンソールを開く
 
+**現場（運用）では開発サーバを起動しない。** 画面は gateway が 8765 番で配る（#56）。
+
 ```bash
-# 実機PC 側
-WHILL_GATEWAY_TOKEN=$(openssl rand -hex 16) whill run --robot cr2-01 --mode mock --gateway
-(cd web && pnpm dev)          # 0.0.0.0:5173 で待ち受ける
+# 実機PC 側（画面のビルドは、画面のコードを変えたときだけ）
+(cd web && pnpm build)        # web/dist/ にできる。git には入れない
+whill run --robot cr2-01 --mode mock --gateway
 
 # 他PC / tablet から
-#   http://<lab-pc>:5173      （研究室 CA を発行済みなら https://）
+#   https://<実機PC>:8765/     （研究室 CA が未発行なら http://）
+```
+
+- 画面と WebSocket が同じ `https://<実機PC>:8765` になる。証明書も 1 枚で済む
+- 配る場所は `$WHILL_PLATFORM_ROOT/web/dist`（`WHILL_WEB_ROOT` で変えられる）。
+  systemd で stackd を動かす場合、ユニットは `WHILL_PLATFORM_ROOT` を設定済み。
+  TLS の変数（`WHILL_TLS_*`）は `/etc/whill/stackd.env` に書く
+- **ビルドしていないと**、`/` は「画面がまだビルドされていない」と `pnpm build` を案内する。
+  gateway 自体は動いていて、WebSocket（CLI など）は使える
+- 画面のコードを変えたのに tablet が古い画面のままなら、`pnpm build` をし直したか確かめる
+  （`index.html` はキャッシュしない設定にしてある）
+
+**開発中（画面のコードを触るとき）** は、変更がすぐ反映される開発サーバを使う:
+
+```bash
+(cd web && pnpm dev)          # 0.0.0.0:5173。研究室 CA を発行済みなら https
+#   https://<lab-pc>:5173
 ```
 
 ## iPad から開く（https / wss）
@@ -227,7 +245,8 @@ source scripts/env.sh              # 発行済みなら WHILL_TLS_CERT / KEY / C
    `whill_console lab CA` をインストール
 4. 設定 → 一般 → 情報 → **証明書信頼設定** → `whill_console lab CA` をオンにする。
    **ここを忘れると、インストールしただけでは信頼されない**
-5. `https://<PC の IP>:5173` を開き、トークンを入れる。上部帯が「gateway 接続」
+5. `https://<PC の IP>:8765/` を開き、トークンを入れる（開発サーバを動かしているなら
+   `:5173` でもよい）。上部帯が「gateway 接続」
    「stackd running」になれば成立
 
 回避のために Chrome の「常に安全な接続を使用する」をオフにしていたら、オンに戻すこと。
@@ -241,7 +260,7 @@ source scripts/env.sh              # 発行済みなら WHILL_TLS_CERT / KEY / C
 
 - **確認済み（2026-09-14）**: iPad の Safari で、上の手順のあと https / wss で繋がる
 - iPad の Chrome で開けるか
-- `https://<hostname>.local:5173` の名前で開けるか（証明書には入れてある）
+- `https://<hostname>.local:8765/` の名前で開けるか（証明書には入れてある）
 - iPad が CA の Name Constraints を守るか
 
 俯瞰図の操作:

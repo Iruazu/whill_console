@@ -47,7 +47,7 @@ from action_msgs.srv import CancelGoal
 from rosbag2_interfaces.srv import Pause, Resume, SetRate
 from rosgraph_msgs.msg import Clock as ClockMsg
 
-from whill_gateway import protocol, tls
+from whill_gateway import protocol, tls, web_static
 from whill_gateway.dispatch import DispatchBridge, DispatchError
 from whill_gateway.driver_telemetry import DriverTelemetry
 from whill_gateway.obstacles import ObstacleError, ObstacleStore, apply_command
@@ -652,7 +652,9 @@ async def _serve(node: Gateway, token: str, ssl_context) -> None:
     )
     await node.server.serve(node.bind_address, node.port,
                             ssl_context=ssl_context,
-                            ca_cert_path=os.environ.get('WHILL_TLS_CA') or None)
+                            ca_cert_path=os.environ.get('WHILL_TLS_CA') or None,
+                            # 画面（pnpm build の成果物）も同じポートから配る（#56）
+                            web_root=web_static.resolve_web_root())
     node.get_logger().info(
         f'{tls.scheme(ssl_context)}://{node.bind_address}:{node.port} で待ち受け中 '
         f'(robot={node.robot_id}, mode={node.mode})')
