@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# `whill` を uv の環境で動かす薄い入口。scripts/env.sh が PATH に入れる。
+#
+# services/.venv/bin を PATH に足さないのは、そこに venv の python3 もあるから。
+# 足すと ROS が使うシステムの python3 を隠し、rclpy が import できなくなる。
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+if ! command -v uv >/dev/null 2>&1; then
+  # 「exec: uv: not found」だけだと何をすればよいか分からない。
+  echo "uv が見つからない。~/.local/bin を PATH に入れるか（source scripts/env.sh）、" >&2
+  echo "uv を入れること: https://docs.astral.sh/uv/" >&2
+  exit 127
+fi
+exec uv run --quiet --project "${root}/services" whill "$@"

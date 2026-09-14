@@ -42,6 +42,13 @@ case ":${PATH}:" in
   *) export PATH="${HOME}/.local/bin:${PATH}" ;;
 esac
 
+# `whill` / `whill-stackd` をそのまま叩けるようにする。中身は uv run の薄い入口。
+# services/.venv/bin を足さないのは、venv の python3 がシステムの python3（ROS）を隠すから。
+case ":${PATH}:" in
+  *":${WHILL_PLATFORM_ROOT}/scripts/bin:"*) ;;
+  *) export PATH="${WHILL_PLATFORM_ROOT}/scripts/bin:${PATH}" ;;
+esac
+
 # ROS 2 humble
 if [ -f /opt/ros/humble/setup.bash ]; then
   # shellcheck disable=SC1091
