@@ -34,7 +34,7 @@
 | 5 | 温度・電力の実値レンジ。`cr2-base.yaml` の warn/crit 閾値は推定値。 |
 | 3 | **全域 costmap（440×140 セル）を描いたときの tablet での描画負荷。** ImageData を 1 枚起こして拡大する方式にしてあるが、実機の tablet での実測は未実施。 |
 | 5 | **ops のボタンの大きさと配置が屋外・片手で使えるか。** 行き先ボタン 14px/20px、E-stop は上部帯の右端（768px で接続中は 2 行目に折り返す）。Chromium 768×1024 でスクロールなしに押せることは Playwright で確認済みだが、手袋・直射日光・走行中の揺れの中では見ていない。 |
-| 5 | **iPad で研究室 CA を信頼したあと、Safari と Chrome の両方から https / wss で警告なく開けるか**（#55）。PC の CLI（CA で検証）と Chromium（証明書エラーを無視）では確認済み。`<hostname>.local` の名前で開けるか、iPad が CA の Name Constraints を守るかも未確認。手順は runbook「iPad から開く」。 |
+| 5 | **iPad の Chrome と mDNS 名での確認**（#55）。2026-09-14 に iPad の **Safari** で、runbook の手順どおり CA を信頼したあと `https://172.20.10.2:5173` が開き、gateway（wss 8765）と stackd（wss 8770）に接続したままになることを確認済み（iPhone テザリング、PC のインターネットも生きていた）。**未確認**: iPad の Chrome から開けるか、`https://<hostname>.local:5173` の名前で開けるか、iPad が CA の Name Constraints を守るか。 |
 | 5 | tablet 実機（iPad 等）での ops レイアウトの視認性。Playwright は Chromium 768px で見ているだけで、実機 WebKit と屋外の輝度は見ていない。 |
 | 全体 | 3台での `ROS_DOMAIN_ID` 分離の実確認（21 / 22 / 23 を割り当て済み、未検証）。 |
 
