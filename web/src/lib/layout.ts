@@ -47,6 +47,8 @@ export interface LayoutDefaults {
   showAllTelemetry: boolean
   /** カメラを出すか（#52）。運用中に見るものではない（#43 の主要テレメトリの考え方）。 */
   showCamera: boolean
+  /** tf の木を出すか（#51）。false でも、止まっているときは一行で知らせる。 */
+  showTfTree: boolean
 }
 
 export const LAYOUT_DEFAULTS: Record<Layout, LayoutDefaults> = {
@@ -57,6 +59,7 @@ export const LAYOUT_DEFAULTS: Record<Layout, LayoutDefaults> = {
     showDispatch: true,
     showAllTelemetry: true,
     showCamera: true,
+    showTfTree: true,
   },
   ops: {
     followRobot: true,
@@ -67,6 +70,8 @@ export const LAYOUT_DEFAULTS: Record<Layout, LayoutDefaults> = {
     // 電流や温度は切り分けのための数字。運用中に見るものではない。
     showAllTelemetry: false,
     showCamera: false,
+    // 運用中に木は眺めない。止まったときだけ何が止まったかを出す。
+    showTfTree: false,
   },
 }
 

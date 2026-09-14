@@ -81,6 +81,8 @@ describe('初期値', () => {
     // 運用中に見るものではない。帯域も使う
     expect(LAYOUT_DEFAULTS.dev.showCamera).toBe(true)
     expect(LAYOUT_DEFAULTS.ops.showCamera).toBe(false)
+    expect(LAYOUT_DEFAULTS.dev.showTfTree).toBe(true)
+    expect(LAYOUT_DEFAULTS.ops.showTfTree).toBe(false)
   })
 
   it('配車はどちらでも出す', () => {

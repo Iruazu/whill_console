@@ -223,6 +223,25 @@ describe('その他のフレーム', () => {
       type: 'tf', parents: { base_link: 'odom', odom: 'map' }, stamp: 1,
     })
     expect(state.tf?.parents.base_link).toBe('odom')
+    // 以前の形（edges を持たない gateway）でも落ちない
+    expect(state.tf?.edges).toEqual([])
+    expect(state.tf?.missing).toEqual([])
+  })
+
+  it('tf の辺の判定と来ていない辺を保持する（#51）', () => {
+    const state = apply(emptyFrameState(), {
+      type: 'tf',
+      parents: { odom: 'map' },
+      edges: [{ parent: 'map', child: 'odom', static: false, expected: true, source: 'localizer',
+        age: 2.1, rate_hz: null, level: 'warn' }],
+      roots: ['map'],
+      missing: [{ parent: 'odom', child: 'base_link', kind: 'dynamic', source: 'EKF',
+        actual_parent: null }],
+      stamp: 1,
+    })
+    expect(state.tf?.edges[0].level).toBe('warn')
+    expect(state.tf?.missing[0].child).toBe('base_link')
+    expect(state.tf?.roots).toEqual(['map'])
   })
 
   it('diagnostics を保持する', () => {

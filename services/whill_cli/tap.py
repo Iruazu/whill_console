@@ -100,7 +100,13 @@ def summarize(frame: dict[str, Any]) -> str:
         return (f"status   mode={frame['mode']} clients={frame['clients']} "
                 f"estop={frame['estop']} nav={frame['nav_active']}")
     if kind == 'tf':
-        return f"tf       {len(frame['parents'])} フレーム"
+        # 止まっている辺と来ていない辺だけ名前を出す（#51）。健全な辺は数だけ。
+        bad = [f"{e['parent']}->{e['child']}:{e['level']}({e['age']}s)"
+               for e in frame.get('edges', []) if e.get('level') in ('warn', 'crit')]
+        missing = [f"{m['parent']}->{m['child']}" for m in frame.get('missing', [])]
+        tail = ''.join([f" 止まり={bad}" if bad else '',
+                        f" 無い={missing}" if missing else ''])
+        return f"tf       {len(frame['parents'])} フレーム{tail}"
     if kind == 'diagnostics':
         return f"diag     {len(frame['entries'])} 件"
     if kind == 'image':

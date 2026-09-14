@@ -254,10 +254,45 @@ export interface ParamChange {
   stamp: number
 }
 
+/** tf の辺の判定（#51）。閾値の判定は gateway が済ませてある。
+ *
+ * - `static`: `/tf_static` の辺。止まっていて正常
+ * - `unjudged`: 期待値（cr2-base.yaml の `tf.dynamic`）に無い動的な辺。閾値が無いので良し悪しを言わない
+ */
+export type TfLevel = 'ok' | 'warn' | 'crit' | 'static' | 'unjudged'
+
+export interface TfEdge {
+  parent: string
+  child: string
+  static: boolean
+  /** 設定（cr2-base.yaml / 個体 yaml）に宣言された辺か。 */
+  expected: boolean
+  /** 誰が出すはずの辺か（宣言の `source`）。 */
+  source: string
+  /** 最後に届いてからの実時間 [s]。静的な辺は null。 */
+  age: number | null
+  /** 実測レート。止まっている辺と静的な辺は null。 */
+  rate_hz: number | null
+  level: TfLevel
+}
+
+/** 宣言にあるのに来ていない辺。`actual_parent` があれば子は来ているが親が違う。 */
+export interface TfMissing {
+  parent: string
+  child: string
+  kind: 'dynamic' | 'static'
+  source: string
+  actual_parent: string | null
+}
+
 /** tf ツリーの要約。変換行列そのものは送られてこない（3D は Foxglove に委譲）。 */
 export interface TfSummary {
   /** child → parent。 */
   parents: Record<string, string>
+  edges: TfEdge[]
+  /** 木の根。2 つ以上なら木が分かれている。 */
+  roots: string[]
+  missing: TfMissing[]
   stamp: number
 }
 

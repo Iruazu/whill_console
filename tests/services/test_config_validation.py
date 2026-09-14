@@ -148,6 +148,22 @@ def test_duplicate_topic_declaration_is_rejected(tmp_path):
     assert any('二重に publish 宣言' in e for e in errors)
 
 
+@pytest.mark.parametrize('edit, message', [
+    (lambda edges: edges[0].update(warn_sec=5.0), 'warn_sec < crit_sec'),
+    (lambda edges: edges.append(dict(edges[0])), '二重に宣言'),
+])
+def test_bad_tf_expectation_is_rejected(tmp_path, edit, message):
+    """tf パネルの閾値（#51）。逆転や二重宣言は黙って通さない。"""
+    def mutate(root: Path):
+        path = root / 'robots' / 'cr2-base.yaml'
+        data = yaml.safe_load(path.read_text())
+        edit(data['tf']['dynamic'])
+        path.write_text(yaml.safe_dump(data, allow_unicode=True))
+
+    errors = validate_all(_write_config(tmp_path, mutate))
+    assert any(message in e for e in errors), errors
+
+
 def test_mode_referring_to_unknown_driver_is_rejected(tmp_path):
     def mutate(root: Path):
         path = root / 'robots' / 'cr2-base.yaml'

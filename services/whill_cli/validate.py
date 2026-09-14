@@ -189,6 +189,28 @@ BASE_SCHEMA: dict[str, Any] = {
             },
         },
         'derived_telemetry': {'type': 'array', 'items': DERIVED_TELEMETRY_ITEM},
+        # tf パネルの期待値（#51）。静的な辺は個体 yaml の tf_static が正。
+        'tf': {
+            'type': 'object',
+            'additionalProperties': False,
+            'properties': {
+                'dynamic': {
+                    'type': 'array',
+                    'items': {
+                        'type': 'object',
+                        'required': ['parent', 'child', 'warn_sec', 'crit_sec'],
+                        'additionalProperties': False,
+                        'properties': {
+                            'parent': {'type': 'string', 'minLength': 1},
+                            'child': {'type': 'string', 'minLength': 1},
+                            'source': {'type': 'string'},
+                            'warn_sec': {'type': 'number', 'exclusiveMinimum': 0},
+                            'crit_sec': {'type': 'number', 'exclusiveMinimum': 0},
+                        },
+                    },
+                },
+            },
+        },
         'modes': {
             'type': 'object',
             'minProperties': 1,
@@ -354,5 +376,16 @@ def _cross_checks(params: dict, base: dict, robot_paths: list[Path],
                     f'cr2-base.yaml: トピック {topic} を {seen[topic]} と {driver} が'
                     f'二重に publish 宣言している')
             seen[topic] = driver
+
+    # tf の閾値は warn < crit。逆だと「注意」を飛ばして「異常」になる。
+    # 子は 1 つの親しか持てないので、同じ子を二重に宣言させない（どちらの閾値か曖昧になる）。
+    tf_children: set[str] = set()
+    for edge in ((base.get('tf') or {}).get('dynamic') or []):
+        name = f'{edge["parent"]} -> {edge["child"]}'
+        if edge['warn_sec'] >= edge['crit_sec']:
+            errors.append(f'cr2-base.yaml: tf.dynamic の {name} は warn_sec < crit_sec にすること')
+        if edge['child'] in tf_children:
+            errors.append(f'cr2-base.yaml: tf.dynamic の子 {edge["child"]} が二重に宣言されている')
+        tf_children.add(edge['child'])
 
     return errors
