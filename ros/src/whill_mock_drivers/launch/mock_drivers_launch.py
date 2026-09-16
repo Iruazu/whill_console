@@ -57,10 +57,16 @@ def _spawn(context, *args, **kwargs):
         executable = EXECUTABLES.get(mock_node)
         if executable is None:
             raise RuntimeError(f'{driver}: mock_node "{mock_node}" に対応する実行ファイルが無い')
+        # 実ドライバのノード名が宣言されていれば、モックもその名前で起動する
+        # （#53）。パラメータの宛先が実機と揃っていないと、params.yaml の
+        # スライダーが mock では別ノードを指す。
+        ros_node = declaration.get('ros_node')
+        namespace, _, name = (ros_node or f'/{mock_node}').rpartition('/')
         nodes.append(Node(
             package='whill_mock_drivers',
             executable=executable,
-            name=mock_node,
+            name=name,
+            namespace=namespace or '/',
             output='screen',
             parameters=[{'robot_id': robot_id}],
         ))

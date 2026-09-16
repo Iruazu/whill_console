@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { imageMime } from '../lib/streams'
+import { CAMERA_PARAM_PREFIX } from '../lib/params'
 import { useConsoleStore } from '../state/store'
 
 /** カメラ（#52）。dev レイアウトだけに出す。
@@ -15,6 +16,13 @@ import { useConsoleStore } from '../state/store'
  * カメラが止まっても最後の 1 枚は残る。そのまま出すと「いまこう映っている」と
  * 読んでしまうので、古くなったら薄くして何秒前のものかを出す（costmap や
  * テレメトリと同じ扱い）。
+ *
+ * ## 設定はパラメータパネルに任せる
+ *
+ * 露出と解像度は `config/params.yaml` に登録してあり（#53）、パラメータパネルの
+ * スライダーがそのまま効く。**ここに camera 専用のスライダーを作らない。**
+ * 作ると、範囲・safety_class・変更ログ・拒否の扱いが二重実装になる。
+ * ここが持つのは「そこへ辿り着く導線」だけ。
  *
  * 深度画像・点群は出さない（設計原則 2。Foxglove に委譲する）。
  */
@@ -35,6 +43,8 @@ export function CameraPanel({ setImageSubscribed }: CameraPanelProps) {
   const [openedAt, setOpenedAt] = useState<number | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const image = useConsoleStore((s) => s.image)
+  const params = useConsoleStore((s) => s.params)
+  const setParamFilter = useConsoleStore((s) => s.setParamFilter)
   const receivedAt = useConsoleStore((s) => s.receivedAt.image)
   const connection = useConsoleStore((s) => s.connection)
 
@@ -80,6 +90,21 @@ export function CameraPanel({ setImageSubscribed }: CameraPanelProps) {
 
       {open && (
         <div className="camera-body">
+          {params.some((spec) => spec.key.startsWith(CAMERA_PARAM_PREFIX)) && (
+            <button
+              type="button"
+              className="link-button"
+              data-testid="camera-params-link"
+              onClick={() => {
+                setParamFilter(CAMERA_PARAM_PREFIX)
+                document
+                  .querySelector('[data-testid="params"]')
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }}
+            >
+              露出・解像度の設定を出す
+            </button>
+          )}
           {image ? (
             <figure className={`camera-frame${stale ? ' stale' : ''}`}>
               <img
