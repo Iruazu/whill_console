@@ -56,14 +56,45 @@ describe('snake_case からの変換', () => {
     })
   })
 
-  it('status の nav_active / robot_id を読む', () => {
+  it('status の nav_state / robot_id を読む', () => {
     const state = apply(emptyFrameState(), {
-      type: 'status', robot_id: 'cr2-01', mode: 'mock',
-      nav_active: true, estop: false, clients: 2, preset: null, stamp: 1,
+      type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_state: 'active',
+      nav_active: true, moving: true, estop: false, clients: 2, preset: null, stamp: 1,
     })
     expect(state.status?.robotId).toBe('cr2-01')
+    expect(state.status?.navState).toBe('active')
     expect(state.status?.navActive).toBe(true)
+    expect(state.status?.moving).toBe(true)
     expect(state.status?.clients).toBe(2)
+  })
+
+  it('Nav2 を起動しないモードと、応答が無いのを区別する（#67）', () => {
+    const replay = apply(emptyFrameState(), {
+      type: 'status', robot_id: 'cr2-01', mode: 'replay', nav_state: 'not_started',
+      nav_active: false, estop: false, clients: 1, preset: null, stamp: 1,
+    })
+    expect(replay.status?.navState).toBe('not_started')
+
+    const down = apply(emptyFrameState(), {
+      type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_state: 'down',
+      nav_active: false, estop: false, clients: 1, preset: null, stamp: 1,
+    })
+    expect(down.status?.navState).toBe('down')
+  })
+
+  it('知らない状態名は真偽値に倒す（古い・新しい gateway と混ざっても壊れない）', () => {
+    const state = apply(emptyFrameState(), {
+      type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_state: 'no-such-state',
+      nav_active: true, estop: false, clients: 1, preset: null, stamp: 1,
+    })
+    expect(state.status?.navState).toBe('active')
+
+    const old = apply(emptyFrameState(), {
+      type: 'status', robot_id: 'cr2-01', mode: 'mock',
+      nav_active: false, estop: false, clients: 1, preset: null, stamp: 1,
+    })
+    expect(old.status?.navState).toBe('inactive')
+    expect(old.status?.moving).toBe(false)
   })
 
   it('param spec の ros_node / safety_class を読む', () => {

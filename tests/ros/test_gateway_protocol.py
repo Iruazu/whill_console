@@ -142,10 +142,33 @@ def test_error_always_states_a_reason():
 
 
 def test_status_carries_estop():
-    frame = protocol.status(robot_id='cr2-01', mode='mock', nav_active=True,
+    frame = protocol.status(robot_id='cr2-01', mode='mock', nav_state='active',
                             estop=True, clients=2, stamp=1.0)
     assert frame['estop'] is True
     assert frame['clients'] == 2
+
+
+@pytest.mark.parametrize('state, active', [
+    ('active', True),
+    ('inactive', False),
+    ('down', False),
+    ('not_started', False),
+    ('starting', False),
+])
+def test_status_keeps_the_boolean_but_says_why(state, active):
+    """真偽値だけだと「起動していない」と「応答が無い」が同じ絵になる（#67）。"""
+    frame = protocol.status(robot_id='cr2-01', mode='mock', nav_state=state,
+                            estop=False, clients=1, stamp=1.0)
+    assert frame['nav_active'] is active
+    assert frame['nav_state'] == state
+
+
+def test_status_says_whether_the_chair_is_moving():
+    """Nav2 が active かどうかと「いま動いているか」は別（手動操作でも動く）。"""
+    frame = protocol.status(robot_id='cr2-01', mode='mock', nav_state='inactive',
+                            estop=False, clients=1, stamp=1.0, moving=True)
+    assert frame['moving'] is True
+    assert frame['nav_active'] is False
 
 
 # ---- エンコード ------------------------------------------------------------

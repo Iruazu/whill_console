@@ -12,6 +12,7 @@ import type {
   PoseFrame,
   ReplayFrame,
   ScanFrame,
+  NavState,
   StackStatus,
   TelemetryDriver,
   TelemetryFrame,
@@ -119,6 +120,19 @@ const num = (value: unknown, fallback = 0): number =>
 /** 数値か、不明を表す null。既定値で埋めないほうがよい場所に使う。 */
 const opt = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
+
+const NAV_STATES: NavState[] = ['active', 'inactive', 'down', 'starting', 'not_started']
+
+/** 知らない状態名を勝手に「動いている」にしない。
+ *
+ * gateway が新しい状態を足したときは、真偽値のほうに倒す（active / 不明）。
+ */
+const navState = (value: unknown, active: boolean): NavState =>
+  NAV_STATES.includes(value as NavState)
+    ? (value as NavState)
+    : active
+      ? 'active'
+      : 'inactive'
 
 const str = (value: unknown, fallback = ''): string =>
   typeof value === 'string' ? value : fallback
@@ -284,7 +298,9 @@ export function applyFrame(
           status: {
             robotId: str(frame.robot_id),
             mode: str(frame.mode, 'mock') as StackStatus['mode'],
+            navState: navState(frame.nav_state, frame.nav_active === true),
             navActive: frame.nav_active === true,
+            moving: frame.moving === true,
             estop: frame.estop === true,
             clients: num(frame.clients),
             preset: typeof frame.preset === 'string' ? frame.preset : null,

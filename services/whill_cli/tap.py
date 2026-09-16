@@ -98,7 +98,8 @@ def summarize(frame: dict[str, Any]) -> str:
         return f"path     {len(frame['points'])} 点"
     if kind == 'status':
         return (f"status   mode={frame['mode']} clients={frame['clients']} "
-                f"estop={frame['estop']} nav={frame['nav_active']}")
+                f"estop={frame['estop']} nav={frame.get('nav_state', frame['nav_active'])}"
+                f"{' 走行中' if frame.get('moving') else ''}")
     if kind == 'tf':
         # 止まっている辺と来ていない辺だけ名前を出す（#51）。健全な辺は数だけ。
         bad = [f"{e['parent']}->{e['child']}:{e['level']}({e['age']}s)"

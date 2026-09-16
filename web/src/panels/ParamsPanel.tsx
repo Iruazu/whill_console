@@ -30,10 +30,12 @@ export function ParamsPanel({ send }: ParamsPanelProps) {
   const [filter, setFilter] = useState('')
   const [liveOnly, setLiveOnly] = useState(false)
 
-  // 走行中かどうかは gateway が status で配る nav_active では足りない
-  // （手動操作でも動く）。gateway 側が最終判断をするので、UI は
-  // 「無効化して見せる」だけにとどめる。
-  const moving = status?.navActive === true
+  // 走行中かどうかは gateway が /cmd_vel から判定して status に載せる（#67）。
+  // 以前は nav_active を見ていたが、あれは Nav2 が活きているかであって
+  // 「いま動いているか」ではない（手動操作でも動く）。しかも固定値だったので、
+  // この無効化は一度も働いていなかった。
+  // 最終判断は gateway 側（拒否は効いている）。UI は「無効化して見せる」だけ。
+  const moving = status?.moving === true
 
   const grouped = useMemo(() => {
     const needle = filter.trim().toLowerCase()

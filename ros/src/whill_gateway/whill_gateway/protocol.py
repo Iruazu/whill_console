@@ -30,6 +30,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from whill_gateway import nav2_status
+
 PROTOCOL_VERSION = 1
 """互換性のない変更をしたら上げる。`hello` に載せて Web 側が確認する。"""
 
@@ -274,15 +276,27 @@ def error(reason: str, *, fatal: bool = False) -> dict[str, Any]:
     return {'type': MSG_ERROR, 'reason': reason, 'fatal': fatal}
 
 
-def status(*, robot_id: str, mode: str, nav_active: bool, estop: bool,
-           clients: int, stamp: float, latency_ms: float | None = None,
+def status(*, robot_id: str, mode: str, nav_state: str, estop: bool,
+           clients: int, stamp: float, moving: bool = False,
+           latency_ms: float | None = None,
            preset: str | None = None) -> dict[str, Any]:
-    """上部帯に出すもの。1 秒に 1 回程度で十分。"""
+    """上部帯に出すもの。1 秒に 1 回程度で十分。
+
+    `nav_state` は `nav2_status.py` の 5 つ（#67）。真偽値の `nav_active` も
+    残すが、**「active でない」理由は nav_state にしか無い**（起動していない /
+    起動中 / 応答なし / activate されていない）。
+
+    `moving` は「いま車体が動いているか」（`/cmd_vel` から判定）。Nav2 が
+    active かどうかとは別もので、手動操作でも動く。UI は
+    locked_while_moving のスライダーを無効化して見せるのに使う。
+    """
     return {
         'type': MSG_STATUS,
         'robot_id': robot_id,
         'mode': mode,
-        'nav_active': nav_active,
+        'nav_state': nav_state,
+        'nav_active': nav_state == nav2_status.STATE_ACTIVE,
+        'moving': moving,
         'estop': estop,
         'clients': clients,
         'stamp': stamp,

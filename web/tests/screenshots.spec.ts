@@ -244,8 +244,8 @@ test.describe('console のスクリーンショット', () => {
         ],
       })
       ingest({
-        type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_active: false,
-        estop: false, clients: 1, preset: null, stamp: 1,
+        type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_state: 'active',
+        moving: false, estop: false, clients: 1, preset: null, stamp: 1,
       })
     })
 
@@ -293,8 +293,8 @@ test.describe('console のスクリーンショット', () => {
         }],
       })
       ingest({
-        type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_active: false,
-        estop: false, clients: 1, preset: null, stamp: 1,
+        type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_state: 'active',
+        moving: false, estop: false, clients: 1, preset: null, stamp: 1,
       })
     })
 
@@ -306,8 +306,8 @@ test.describe('console のスクリーンショット', () => {
       ;(window as unknown as {
         __whillIngest: (frame: Record<string, unknown>) => void
       }).__whillIngest({
-        type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_active: true,
-        estop: false, clients: 1, preset: null, stamp: 2,
+        type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_state: 'active',
+        moving: true, estop: false, clients: 1, preset: null, stamp: 2,
       })
     })
     await expect(input).toBeDisabled()
@@ -360,7 +360,7 @@ test.describe('console のスクリーンショット', () => {
       ;(window as unknown as {
         __whillIngest: (f: Record<string, unknown>) => void
       }).__whillIngest({
-        type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_active: true,
+        type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_state: 'active',
         estop: true, clients: 2, preset: null, stamp: 1,
       })
     })
@@ -383,7 +383,7 @@ test.describe('console のスクリーンショット', () => {
       ;(window as unknown as {
         __whillIngest: (f: Record<string, unknown>) => void
       }).__whillIngest({
-        type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_active: false,
+        type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_state: 'inactive',
         estop: true, clients: 1, preset: null, stamp: 1,
       })
     })
@@ -1110,7 +1110,7 @@ test.describe('console のスクリーンショット', () => {
             this.reply({ type: 'hello', authenticated: true, robot_id: 'cr2-01', mode: 'mock',
                          service: 'whill_stackd' })
             this.reply({ type: 'status', state: 'running', robot_id: 'cr2-01', mode: 'mock',
-                         nav_active: true, estop: false, clients: 1, stamp: 1 })
+                         nav_state: 'active', estop: false, clients: 1, stamp: 1 })
           } else {
             this.reply({ type: 'error', reason: 'トークンが違う', fatal: true })
             setTimeout(() => { this.readyState = 3; this.onclose?.() }, 20)
@@ -1212,7 +1212,7 @@ test.describe('console のスクリーンショット', () => {
           const frame = JSON.parse(raw)
           if (frame.type === 'auth') {
             this.reply({ type: 'hello', authenticated: true, robot_id: 'cr2-01', mode: 'mock' })
-            this.reply({ type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_active: true,
+            this.reply({ type: 'status', robot_id: 'cr2-01', mode: 'mock', nav_state: 'active',
                          estop: false, clients: 1, stamp: 1 })
           }
           if (frame.type === 'subscribe' && this.url.includes('8765')) {
@@ -1353,5 +1353,72 @@ test.describe('tf パネル（#51）', () => {
       path: `${SHOT_DIR}/${testInfo.project.name}-tf-ops.png`,
       fullPage: true,
     })
+  })
+})
+
+test.describe('Nav2 の状態表示（#67）', () => {
+  const feed = (page: import('@playwright/test').Page, over: Record<string, unknown>) =>
+    page.evaluate(
+      (f) =>
+        (window as unknown as {
+          __whillIngest: (x: Record<string, unknown>) => void
+        }).__whillIngest({
+          type: 'status', robot_id: 'cr2-01', mode: 'mock', estop: false,
+          clients: 1, preset: null, stamp: 1, ...f,
+        }),
+      over,
+    )
+
+  test('active でない理由ごとに表示が変わる', async ({ page }, testInfo) => {
+    await openWithToken(page)
+    const badge = page.getByTestId('nav-active')
+
+    await feed(page, { nav_state: 'active' })
+    await expect(badge).toHaveText('Nav2 動作中')
+    await expect(badge).toHaveClass(/state-ok/)
+
+    // 起動しているはずなのに応答が無い。**これが一番困る状態**なので赤
+    await feed(page, { nav_state: 'down' })
+    await expect(badge).toHaveText('Nav2 応答なし')
+    await expect(badge).toHaveClass(/state-down/)
+
+    // replay は Nav2 を上げない。赤くする理由が無い
+    await feed(page, { mode: 'replay', nav_state: 'not_started' })
+    await expect(badge).toHaveText('Nav2 起動しない')
+    await expect(badge).not.toHaveClass(/state-down/)
+
+    await feed(page, { nav_state: 'starting' })
+    await expect(badge).toHaveText('Nav2 起動中')
+
+    await page.screenshot({
+      path: `${SHOT_DIR}/${testInfo.project.name}-nav-state.png`,
+      clip: { x: 0, y: 0, width: testInfo.project.name === 'ops-tablet' ? 768 : 900, height: 110 },
+    })
+  })
+
+  test('走行中の無効化は moving で決まる（nav_active ではない）', async ({ page }) => {
+    await openWithToken(page)
+    await page.evaluate(() => {
+      const w = window as unknown as { __whillIngest: (f: Record<string, unknown>) => void }
+      w.__whillIngest({
+        type: 'params',
+        params: [{
+          key: 'controller_server.FollowPath.desired_linear_vel',
+          node: 'controller_server.FollowPath', name: 'desired_linear_vel',
+          ros_node: '/controller_server', type: 'double',
+          value: 0.3, default: 0.3, range: { min: 0.05, max: 1.0, step: 0.01 },
+          unit: 'm/s', live: true, safety_class: 'locked_while_moving', description: '説明',
+        }],
+      })
+    })
+
+    const input = page.getByTestId('input-controller_server.FollowPath.desired_linear_vel')
+    // Nav2 が動作中でも、車体が止まっていれば触れる
+    await feed(page, { nav_state: 'active', moving: false })
+    await expect(input).toBeEnabled()
+
+    // 手動操作で動いている（Nav2 は inactive）ときは触らせない
+    await feed(page, { nav_state: 'inactive', moving: true, stamp: 2 })
+    await expect(input).toBeDisabled()
   })
 })

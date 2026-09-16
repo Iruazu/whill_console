@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { formatLatency } from '../lib/format'
 import type { StackdStatus } from '../hooks/useStackd'
+import type { NavState } from '../lib/types'
 import { useConsoleStore } from '../state/store'
 
 /** 上部帯: 個体名 / モード / 遅延 / スタック状態 / E-stop。
@@ -16,6 +17,39 @@ export interface TopBarProps {
   stackd: StackdStatus | null
   /** この端末からトークンを消して入力画面に戻す（#58）。 */
   onForgetToken?: () => void
+}
+
+/** Nav2 の状態の見せ方（#67）。
+ *
+ * **「active でない」を全部同じ赤にしない。** replay は Nav2 を上げないので
+ * 赤くする理由が無く、起動直後の数秒も故障ではない。区別しないと、いつも
+ * 赤い表示になって誰も見なくなる。
+ *
+ * 色だけで伝えない（屋外のタブレットで輝度と角度に負ける。色覚の差もある）ので、
+ * 文字も状態ごとに変える。
+ */
+const NAV_LABEL: Record<NavState, string> = {
+  active: '動作中',
+  inactive: '停止中',
+  down: '応答なし',
+  starting: '起動中',
+  not_started: '起動しない',
+}
+
+const NAV_BADGE: Record<NavState, string> = {
+  active: 'state-ok',
+  inactive: 'state-warn',
+  down: 'state-down',
+  starting: 'state-warn',
+  not_started: '',
+}
+
+const NAV_TITLE: Record<NavState, string> = {
+  active: 'Nav2 一式が activate されている',
+  inactive: 'Nav2 は居るが activate されていない',
+  down: '起動しているはずなのに応答が無い',
+  starting: '起動直後。まだ応答が無い',
+  not_started: 'このモードは Nav2 を起動しない（replay）',
 }
 
 export function TopBar({ send, stackd, onForgetToken }: TopBarProps) {
@@ -63,10 +97,11 @@ export function TopBar({ send, stackd, onForgetToken }: TopBarProps) {
           遅延 {formatLatency(latency)}
         </span>
         <span
-          className={`badge ${status?.navActive ? 'state-ok' : 'state-down'}`}
+          className={`badge ${NAV_BADGE[status?.navState ?? 'starting']}`}
           data-testid="nav-active"
+          title={NAV_TITLE[status?.navState ?? 'starting']}
         >
-          Nav2 {status?.navActive ? 'active' : 'inactive'}
+          Nav2 {NAV_LABEL[status?.navState ?? 'starting']}
         </span>
         <span className="badge" data-testid="stackd">
           stackd{' '}

@@ -228,10 +228,21 @@ export interface PathFrame {
   stamp: number
 }
 
+/** Nav2 の状態（#67）。gateway の `nav2_status.py` と揃えること。
+ *
+ * - `not_started`: このモードは Nav2 を起動しない（replay）。異常ではない
+ * - `starting`: 起動直後で、まだ応答が無い
+ * - `down`: 起動しているはずなのに応答が無い
+ */
+export type NavState = 'active' | 'inactive' | 'down' | 'starting' | 'not_started'
+
 export interface StackStatus {
   robotId: string
   mode: Mode
+  navState: NavState
   navActive: boolean
+  /** いま車体が動いているか。Nav2 が active かどうかとは別（手動操作でも動く）。 */
+  moving: boolean
   /** gateway が測った往復遅延 (ms)。上部帯に出す。 */
   latencyMs: number | null
   estop: boolean
