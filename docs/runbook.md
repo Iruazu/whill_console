@@ -136,6 +136,9 @@ whill doctor --robot cr2-01 --mode mock
 # UI のバグと gateway のバグを切り分けるときにも使う。
 whill tap --seconds 8
 whill tap --seconds 5 --stream tf --stream diagnostics --verbose
+#   tf の行は「止まった辺」と「来ていない辺」だけ名前を出す (#51)。
+#   例: tf 5 フレーム 止まり=['map->odom:crit(4.36s)'] 無い=['base_link->imu_link']
+#   健全なら「tf 5 フレーム」だけ。
 whill tap --host 192.168.1.20 --seconds 5     # 別PC の gateway へ
 
 # パラメータを WebSocket 経由で変えてみる (受理/拒否の確認)
@@ -224,6 +227,54 @@ whill run --robot cr2-01 --mode mock --gateway
 (cd web && pnpm dev)          # 0.0.0.0:5173。研究室 CA を発行済みなら https
 #   https://<lab-pc>:5173
 ```
+
+## 画面の見方（上部帯 / tf / カメラ）
+
+### 上部帯の Nav2 の表示（#67）
+
+| 表示 | 色 | 意味 | どうするか |
+|---|---|---|---|
+| Nav2 動作中 | 緑 | Nav2 一式が activate されている | 正常 |
+| Nav2 停止中 | 黄 | lifecycle manager は居るが activate されていない | `ros2 service call /lifecycle_manager_navigation/manage_nodes nav2_msgs/srv/ManageLifecycleNodes "{command: 0}"`（0 = STARTUP）か、起動し直す |
+| Nav2 起動中 | 黄 | 起動から 20 秒以内でまだ応答が無い | 待つ。20 秒を過ぎると「応答なし」になる |
+| Nav2 応答なし | 赤 | 上がっているはずなのに答えない | **これが本当の異常。** 起動ログを見る。`ros2 node list` に Nav2 が居るか |
+| Nav2 起動しない | 無色 | このモードは Nav2 を上げない（replay） | 正常。bag の再生中はこれ |
+
+### tf パネル（dev レイアウト、#51）
+
+TF の途絶は Nav2 が止まる一番多い原因で、**止まっても木の形は変わらない**。
+そこで辺ごとに「最後に届いてから何秒たったか」を出す。
+
+- **異常（赤）**: `map → odom` か `odom → base_link` が止まった／来ていない。
+  前者は自分の位置が分からない状態、後者は EKF が止まっている
+- **注意（黄）**: 遅れている、木が 2 つに分かれている、設定と実機で親が違う
+- **静的**: `/tf_static` の辺。更新されないのが正常
+- 閾値は `config/robots/cr2-base.yaml` の `tf.dynamic`（代表 bag の実測から決めた。
+  `docs/measurements/2026-09-14-tf-intervals.md`）
+- ops レイアウトでは木を出さない。**止まったときだけ 1 行**出る
+
+### カメラ（#52 / #53 / ADR-0007）
+
+```bash
+whill run --robot cr2-01 --mode mock --gateway --camera   # mock は --camera で上がる
+```
+
+- **画像はパネルを開いているあいだだけ流れる。** 閉じれば帯域を使わない
+- 「最新（実測 6.2 Hz）」の数字は**実測**。設定値ではないので、
+  「6 Hz にしたのに 1 Hz しか出ていない」が見える
+- 画像が古くなると薄くなり「n 秒前」と出る。**止まった絵を最新に見せない**
+- 露出・解像度・配信レートは**パラメータパネルで変える**（パネル内のリンクから飛べる）。
+  カメラ専用の操作画面は作っていない
+
+| パラメータ | 何 | 備考 |
+|---|---|---|
+| `camera.rgb_camera.color_profile` | `幅,高さ,FPS` | `live: false`。実機での再起動の要否が未確認 |
+| `camera.rgb_camera.enable_auto_exposure` | 自動露出 | 屋外の逆光で切る |
+| `camera.rgb_camera.exposure` | 露出時間 [us] | 自動露出が true なら効かない。範囲は暫定 |
+| `whill_gateway.image_publish_rate` | 配信レート [Hz] | 既定 6。**通信量はここで決まる** |
+
+**通信量の目安**（mock 実測）: 6 Hz で 1.07 Mbit/s（10 分で約 80 MB）、1 Hz で 0.31 Mbit/s。
+テザリングで見るときは、見ないあいだパネルを閉じるかレートを下げる。
 
 ## iPad から開く（https / wss）
 
@@ -447,6 +498,13 @@ skip の理由がログに出る（全部 skip されて緑、を見逃さない
 | 俯瞰図の地図が粗い | 大きい地図は間引いて送っている。倍率は俯瞰図の右上に出る。細かいところは local costmap で見る（間引かれない）。 |
 | gateway が `address already in use` で落ちる | 前回のプロセスが残っている。`ss -ltnp \| grep 8765` で PID を見て落とす。 |
 | `mode=real` / `mode=sim` で例外が出る | 未配線。仕様どおり（黙って起動しないより落とす）。`docs/open-questions.md` K5。 |
+| 上部帯に「Nav2 応答なし」と出る | Nav2 が上がっているはずなのに `lifecycle_manager_navigation/is_active` が答えない。`ros2 node list` で Nav2 のノードが居るか見る。replay なら「起動しない」と出るのが正常（#67）。 |
+| tf パネルが「map → odom が止まっている」 | localizer（実機は scan-to-map、mock は static）が止まっている。bag 再生を一時停止したときも出る（正常）。走行中なら Nav2 が abort する前触れ。 |
+| tf パネルが「… が来ていない」と出る | 宣言（個体 yaml の `tf_static` / `cr2-base.yaml` の `tf.dynamic`）にあるのに届いていない。ノードが上がっていないか、宣言のほうが古い。**宣言と実機が食い違っていたら既存スタックが正。** |
+| カメラの画像が来ない | 既定では起動しない。mock は `--camera`。ドライバパネルの realsense も見る。パネルを閉じていると流れない（仕様）。 |
+| カメラで通信量を使いすぎる | `whill_gateway.image_publish_rate` を下げる（live なので走行中でも変えられる）。見ないときはパネルを閉じる。 |
+| 画像が「実測 1.0 Hz」のまま上がらない | ドライバ側のレートが低い。`camera.rgb_camera.color_profile` の FPS と `cr2-base.yaml` の宣言を見る。 |
+| gateway を手で止めたいのに止まらない | Ctrl+C か `kill -INT`。**`ros2 launch` の pid だけに素の `kill`（SIGTERM）を送らないこと** — launch が即死して子が残る（K13）。stackd と systemd はプロセスグループ全体に送るので問題ない。 |
 
 ## bag の変換
 
