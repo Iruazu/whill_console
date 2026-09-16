@@ -23,8 +23,11 @@ rviz / gazebo に代わる **WHILL CR 専用の Web コンソール**。sim・�
 
 ## 設計原則（違反する提案は却下する）
 
-1. **ROS は実機PC内に閉じる。** 外部との接続は `whill_gateway` の WebSocket 1 本と ssh のみ。
-   多マシン DDS は構成しない。
+1. **ROS は実機PC内に閉じる。** ROS への口は `whill_gateway` の WebSocket 1 本と ssh のみ。
+   多マシン DDS は構成しない。**例外は運用のための `whill_stackd` (8770) だけ**（起動・停止・
+   ログ tail）。例外の条件は 3 つすべてを満たすこと: **ROS を喋らない**（DDS も topic も
+   通さない）／**LAN 限定**／**gateway と同じトークンで認証する**。これ以外の口を
+   増やす提案は却下する（rosbridge 9090 など）。
 2. **3D 表示・bag 解析・プロットは Foxglove / Lichtblick に委譲する。**
    自作対象は 2D 俯瞰・パラメータ・運用・ドライバ監視のみ。
 3. **設定の単一ソース**（左が弱く、右が強い）:

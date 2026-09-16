@@ -710,6 +710,8 @@ test.describe('console のスクリーンショット', () => {
 
   test('ブラウザが開く WebSocket は gateway と stackd だけ', async ({ page }) => {
     // 設計原則 1: ROS への口は gateway の WebSocket 1 本と ssh のみ。
+    // 例外は運用のための stackd (8770) だけで、条件（ROS を喋らない / LAN 限定 /
+    // 同じトークン）は tests/services/test_principle_1.py が検査する（Q7）。
     // 既存の配車 UI は rosbridge (9090) に直結していたので、移植のときに
     // それを持ち込んでいないことを機械的に確かめる。
     const urls: string[] = []

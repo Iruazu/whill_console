@@ -14,8 +14,11 @@ rvize / gazebo に代わる WHILL CR 専用の Web コンソールを作り、si
 
 違反する提案は理由を述べて却下する。
 
-1. **ROS は実機PC内に閉じる。** 外部との接続は `whill_gateway` の WebSocket 1 本と ssh のみ。
-   多マシン DDS は構成しない。
+1. **ROS は実機PC内に閉じる。** ROS への口は `whill_gateway` の WebSocket 1 本と ssh のみ。
+   多マシン DDS は構成しない。**例外は運用のための `whill_stackd` (8770) だけ**（起動・停止・
+   ログ tail）。例外の条件は 3 つすべてを満たすこと: **ROS を喋らない**（DDS も topic も
+   通さない）／**LAN 限定**／**gateway と同じトークンで認証する**。これ以外の口を
+   増やす提案は却下する（rosbridge 9090 など）。
 2. **3D 表示・bag 解析・プロットは Foxglove / Lichtblick に委譲する。**
    自作対象は 2D 俯瞰・パラメータ・運用・ドライバ監視。
 3. **設定の単一ソース**: `config/params.yaml` < `config/robots/cr2-0N.yaml`
@@ -39,6 +42,7 @@ rvize / gazebo に代わる WHILL CR 専用の Web コンソールを作り、si
 | systemd 化 | **Phase 2 でユニット作成、enable は実機復帰後** | 実機なしで enable すると「動いているつもり」になる。 |
 | 既存 Layer D | **Phase 2 は include、移植は実機復帰後** | 既存スタックを壊さない。 |
 | Web 画面の配信 | **gateway が `pnpm build` の成果物を 8765 番で配る**（#56）。開発サーバ（Vite、5173）は画面のコードを触るときだけ | 現場で起動するものを減らす。画面と WebSocket が同じオリジン・ポート・証明書になる。WebSocket は `/` へのアップグレード要求で振り分け、CLI の接続先を変えない。 |
+| 設計原則 1 と stackd | **原則を「ROS への口は gateway 1 本。運用のための stackd を例外として認める」と書き直す**（Q7、2026-09-16 ユーザ判断）。例外の条件は 3 つ（ROS を喋らない / LAN 限定 / 同じトークン） | stackd は ROS を喋らないので原則の意図には反していない。一方、文言が実態と違うままだと「原則違反だから却下」が使えなくなる。統合（stackd を gateway に入れる）は、自分を止める係が自分の中にある構造になり、停止・再起動・停止中のログが成立しない |
 | sam_infer（推論） | **作らない（当面）。** 用途が未確定のため凍結し、カメラは「画像が見えること」に絞る（ADR-0007、#54） | 目的が決まらないとモデル・速さ・入力・安全区分のどれも決められない。とくに Nav2 に効かせるなら「後回し可の周辺機能」ではなくなる |
 | 屋外の接続 | **PC をアクセスポイントにしない。iPhone のインターネット共有に PC と iPad をつなぐ**。https / wss は研究室 CA（#55） | PC のインターネット（Claude Code・GitHub）を止めない。iPad は http を https に上げるので TLS が要る。2026-09-14 に iPad の Safari で確認。 |
 

@@ -5,7 +5,7 @@
 既存の配車 UI はブラウザから **rosbridge に直接** 繋いでいる
 （`whill_dispatch/web/vendor/roslib.min.js`）。設計原則 1 に反する:
 
-> ROS は実機PC内に閉じる。外部との接続は `whill_gateway` の WebSocket 1 本と ssh のみ。
+> ROS は実機PC内に閉じる。ROS への口は `whill_gateway` の WebSocket 1 本と ssh のみ。
 
 `whill_dispatch` の**ノードは触らない**（`CLAUDE.md`: 既存スタックは参照と
 include の対象であって編集対象ではない）。境界が既に素直に切れているので、

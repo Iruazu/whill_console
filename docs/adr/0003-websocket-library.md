@@ -6,7 +6,7 @@
 
 ## 背景
 
-設計原則 1 により、外部との接続は gateway の WebSocket 1 本に閉じる。
+設計原則 1 により、ROS への口は gateway の WebSocket 1 本に閉じる。
 実装に使うライブラリを選ぶ必要があった。
 
 前提として、gateway は **ROS ノード**なので colcon 側、つまり **システムの
