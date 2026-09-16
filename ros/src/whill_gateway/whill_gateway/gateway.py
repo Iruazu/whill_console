@@ -47,11 +47,13 @@ from geometry_msgs.msg import Point, Twist
 from action_msgs.srv import CancelGoal
 
 from rosbag2_interfaces.srv import Pause, Resume, SetRate
+from std_srvs.srv import Trigger
 from rosgraph_msgs.msg import Clock as ClockMsg
 
 from whill_gateway import protocol, tls, web_static
 from whill_gateway.dispatch import DispatchBridge, DispatchError
 from whill_gateway.driver_telemetry import DriverTelemetry
+from whill_gateway.nav2_status import Nav2Watch, starts_nav2
 from whill_gateway.obstacles import ObstacleError, ObstacleStore, apply_command
 from whill_gateway.param_bridge import MovingWatch, ParamBridge
 from whill_gateway.replay import ReplayProgress, read_bag_info
@@ -61,6 +63,9 @@ from whill_gateway.telemetry import Telemetry
 from whill_gateway.tf_tree import TfTree, load_expectations
 from whill_params import registry as reg
 from whill_params.descriptors import declare_from_registry
+
+NAV2_IS_ACTIVE_SERVICE = '/lifecycle_manager_navigation/is_active'
+"""Nav2 一式が activate されているかを答えるサービス（nav2_bringup が立てる）。"""
 
 STATUS_PERIOD_SEC = 1.0
 """`status` フレームの配信周期。上部帯の更新なので 1 Hz で足りる。"""
@@ -150,8 +155,13 @@ class Gateway(Node):
         self._loop: asyncio.AbstractEventLoop | None = None
         self.server: GatewayServer | None = None
 
-        # nav_active は Nav2 の lifecycle 状態。#13 以降で埋める。
-        self.nav_active = False
+        # ---- Nav2 が動いているか（#67）--------------------------------------
+        # 以前はここが False の固定値で、上部帯は常に inactive だった。
+        # lifecycle manager の is_active を 1 Hz で叩いて埋める。
+        self.nav2 = Nav2Watch(started=starts_nav2(self.registry.base, self.mode),
+                              started_at=self._now())
+        self._nav2_is_active = self.create_client(Trigger, NAV2_IS_ACTIVE_SERVICE)
+        self._nav2_pending = False
 
         self.telemetry = Telemetry(
             self, self.emit, wall_clock=self._wall,
@@ -436,12 +446,39 @@ class Gateway(Node):
     def _on_cmd_vel(self, msg: Twist) -> None:
         self.moving.observe(msg.linear.x, msg.angular.z, self._now())
 
+    def _poll_nav2(self) -> None:
+        """Nav2 の状態を問い合わせる。**待たない。**
+
+        `wait_for_service` は使わない。executor と競合して購読コールバックごと
+        止めた実績がある（K9）。居なければ即座に諦め、次の周期で試し直す。
+        答えが返る前に次の周期が来たら、その回は飛ばす（要求を溜めない）。
+        """
+        if not self.nav2.started or self._nav2_pending:
+            return
+        if not self._nav2_is_active.service_is_ready():
+            return
+
+        def done(future) -> None:
+            self._nav2_pending = False
+            try:
+                response = future.result()
+            except Exception as exc:  # noqa: BLE001 — 落とさない。次の周期で再試行する
+                self.get_logger().debug(f'Nav2 の is_active に失敗した: {exc}')
+                return
+            self.nav2.observe(active=bool(response.success), wall_sec=self._now())
+
+        self._nav2_pending = True
+        self._nav2_is_active.call_async(Trigger.Request()).add_done_callback(done)
+
     def _publish_status(self) -> None:
         server = self.server
+        self._poll_nav2()
+        nav_state = self.nav2.state(self._now())
         self.emit(protocol.status(
             robot_id=self.robot_id,
             mode=self.mode,
-            nav_active=self.nav_active,
+            nav_state=nav_state,
+            moving=self.moving.is_moving(self._now()),
             estop=self.manual.estop,
             clients=server.clients if server else 0,
             stamp=self.get_clock().now().nanoseconds / 1e9,
@@ -571,7 +608,8 @@ class Gateway(Node):
         client.enqueue(protocol.safe_encode(protocol.status(
             robot_id=self.robot_id,
             mode=self.mode,
-            nav_active=self.nav_active,
+            nav_state=self.nav2.state(self._now()),
+            moving=self.moving.is_moving(self._now()),
             estop=self.manual.estop,
             clients=server.clients if server else 1,
             stamp=self.get_clock().now().nanoseconds / 1e9,

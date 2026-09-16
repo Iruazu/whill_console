@@ -49,6 +49,7 @@ body {
 .badge.mode-real { color: var(--crit); border-color: var(--crit); }
 .badge.state-ok { color: var(--ok); border-color: var(--ok); }
 .badge.state-down { color: var(--crit); border-color: var(--crit); }
+.badge.state-warn { color: var(--warn); border-color: var(--warn); }
 /* 再生終了は異常ではないので crit にしない。止まっている理由が
    「終わったから」なのか「一時停止したから」なのかを色でも分ける。 */
 .badge.state-done { color: var(--muted); border-color: var(--muted); }
