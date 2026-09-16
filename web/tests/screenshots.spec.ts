@@ -1472,6 +1472,22 @@ test.describe('カメラの設定への導線（#53）', () => {
     })
   })
 
+  test('配信レートの設定にも辿れる（ADR-0007）', async ({ page }) => {
+    await openWithToken(page)
+    await page.evaluate(() => {
+      const w = window as unknown as { __whillIngest: (f: Record<string, unknown>) => void }
+      w.__whillIngest({ type: 'params', params: [{
+        key: 'whill_gateway.image_publish_rate', node: 'whill_gateway',
+        name: 'image_publish_rate', ros_node: '/whill_gateway', type: 'double',
+        value: 6, default: 6, range: { min: 0.1, max: 30, step: 0.5 }, unit: 'Hz',
+        live: true, safety_class: 'none', description: '圧縮画像のレート制限。',
+      }] })
+    })
+    await page.getByTestId('camera-toggle').click()
+    await page.getByTestId('camera-rate-link').click()
+    await expect(page.getByTestId('param-whill_gateway.image_publish_rate')).toBeVisible()
+  })
+
   test('カメラのパラメータが無ければ導線を出さない', async ({ page }) => {
     await openWithToken(page)
     await page.evaluate(() => {
@@ -1480,5 +1496,32 @@ test.describe('カメラの設定への導線（#53）', () => {
     })
     await page.getByTestId('camera-toggle').click()
     await expect(page.getByTestId('camera-params-link')).toHaveCount(0)
+    await expect(page.getByTestId('camera-rate-link')).toHaveCount(0)
+  })
+
+  test('実測レートを出す。宣言値ではない', async ({ page }) => {
+    await openWithToken(page)
+    await page.getByTestId('camera-toggle').click()
+
+    // 1 枚だけでは何も言わない
+    const send = async (n: number) => {
+      for (let i = 0; i < n; i += 1) {
+        await page.evaluate(() => {
+          const w = window as unknown as { __whillIngest: (f: Record<string, unknown>) => void }
+          w.__whillIngest({ type: 'image', format: 'jpeg', data: 'AA==', stamp: 1 })
+        })
+        await page.waitForTimeout(120)
+      }
+    }
+    await send(1)
+    await expect(page.getByTestId('camera-age')).toHaveText('最新')
+
+    // 約 8 Hz で流し込めば、その実測が出る（宣言値 6 ではない）
+    await send(8)
+    await expect(page.getByTestId('camera-age')).toContainText('実測')
+    const text = await page.getByTestId('camera-age').textContent()
+    const hz = Number(/実測 ([\d.]+) Hz/.exec(text ?? '')?.[1])
+    expect(hz).toBeGreaterThan(3)
+    expect(hz).toBeLessThan(20)
   })
 })

@@ -554,12 +554,21 @@ params:
   - node: whill_gateway
     name: image_publish_rate
     type: double
-    default: 1.0
-    range: {min: 0.1, max: 5.0, step: 0.1}
+    default: 6.0
+    # min は step の刻みに乗る値にすること。descriptor の検査は
+    # min + n*step しか受け付けないので、0.1 始まりだと既定の 6.0 が弾かれる
+    # （実際に gateway が起動しなくなった）。
+    range: {min: 0.5, max: 30.0, step: 0.5}
     unit: Hz
     live: true
     safety_class: none
-    description: 圧縮画像のレート制限。俯瞰図より優先度が低いので既定は低く。
+    description: >-
+      圧縮画像のレート制限。既定はドライバの宣言レート（cr2-base.yaml の
+      realsense は 6 Hz）に合わせてあり、**間引かずにそのまま流す**（ADR-0007）。
+      画像は camera パネルを開いているあいだしか流れないので、見ていない端末の
+      帯域は増えない。上限 30 は D435 の color profile の最大 fps。
+      mock 実測で 6 Hz ＝ 約 0.8 Mbit/s（docs/measurements/2026-09-14-camera-bandwidth.md）。
+      テザリングの通信量が気になるときはここを下げる（live なので走行中でも変えられる）。
 
   - node: whill_gateway
     name: telemetry_publish_rate
