@@ -22,6 +22,7 @@ from launch.actions import (
     ExecuteProcess,
     IncludeLaunchDescription,
     OpaqueFunction,
+    SetEnvironmentVariable,
 )
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -115,7 +116,8 @@ def _waypoints_path(mode: str, robot: dict) -> str:
     実機の地点をそのまま mock で使うと、キャンパスの座標が廊下地図の外を指して
     **全部 ABORTED になり、配線が壊れているのか地点が外なのか区別が付かない。**
     """
-    if mode == 'mock':
+    if mode in ('mock', 'sim'):
+        # sim の廊下は mock と同じ寸法なので、地点も同じものを使う。
         return os.path.join(
             get_package_share_directory('whill_bringup'),
             'config', 'mock_waypoints.yaml')
@@ -134,6 +136,110 @@ def _waypoints_path(mode: str, robot: dict) -> str:
         # 原因が分かりにくい。ここで止めてパスを言う。
         raise RuntimeError(f'配車地点が見つからない: {yaml_path}')
     return str(yaml_path)
+
+
+def _repo_root() -> Path:
+    """本リポの根。config/ の 1 つ上（WHILL_PLATFORM_CONFIG が指す）。"""
+    return _config_root().parent
+
+
+def _corridor_map_yaml(required: bool) -> str | None:
+    """mock / sim 共通の廊下地図（scripts/make_mock_map.py の生成物、gitignore）。"""
+    path = os.path.join(
+        get_package_share_directory('whill_bringup'), 'config', 'mock_corridor.yaml')
+    if os.path.isfile(path):
+        return path
+    if required:
+        # sim は壁を物理で置くので、地図が無いと global costmap の static 層が
+        # 空のまま Nav2 が経路を引けない。黙って進めず、作り方を言う。
+        raise RuntimeError(
+            f'廊下の地図が無い: {path}\n'
+            f'  python3 scripts/make_mock_map.py && colcon build --packages-select whill_bringup')
+    return None
+
+
+def _sim_actions(robot: dict, base: dict, use_sim_time: bool) -> list:
+    """Gazebo Classic 11 の起動と車体の投入（K5）。
+
+    world と車体は起動のたびに config から生成する（whill_bringup/sim.py の
+    docstring 参照 — 寸法とセンサ位置の単一ソースを守るため）。
+    """
+    import importlib.util
+
+    from whill_bringup import sim as whill_sim
+
+    sim_decl = base.get('sim')
+    if not sim_decl:
+        raise RuntimeError('cr2-base.yaml に sim の宣言が無い')
+
+    # 廊下の寸法は mock の地図の生成器が正。
+    spec = importlib.util.spec_from_file_location(
+        'make_mock_map', _repo_root() / 'scripts' / 'make_mock_map.py')
+    corridor = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(corridor)
+
+    world = whill_sim.corridor_world_sdf(
+        half_width=corridor.HALF_WIDTH, length=corridor.LENGTH,
+        wall_thickness=corridor.WALL_THICKNESS,
+        obstacle=(corridor.OBSTACLE_X, corridor.OBSTACLE_Y, corridor.OBSTACLE_RADIUS))
+
+    gpu, gpu_env = whill_sim.gpu_offload_env(
+        nvidia_loaded=os.path.exists('/proc/driver/nvidia/version'),
+        display=os.environ.get('DISPLAY'),
+        override=os.environ.get('WHILL_SIM_GPU'))
+    drivers = base['drivers']
+    rates = {entry['topic']: entry.get('rate_hz')
+             for decl in drivers.values() for entry in (decl.get('publishes') or [])}
+    model = whill_sim.robot_sdf(
+        robot=robot, sim=sim_decl, gpu=gpu,
+        lidar_rate_hz=float(rates[whill_sim.TOPIC_POINTS]),
+        imu_rate_hz=float(rates[whill_sim.TOPIC_IMU]))
+
+    def write(text: str, suffix: str) -> str:
+        handle = tempfile.NamedTemporaryFile(
+            mode='w', suffix=suffix, prefix='whill-sim-', delete=False, encoding='utf-8')
+        handle.write(text)
+        handle.close()
+        return handle.name
+
+    world_path = write(world, '.world')
+    model_path = write(model, '.sdf')
+    gazebo_params = write(yaml.safe_dump(
+        {'gazebo': {'ros__parameters': {'publish_rate': float(sim_decl['clock_hz'])}}}),
+        '-gazebo.yaml')
+    print(f'[whill_bringup] sim: world={world_path} model={model_path} '
+          f'LiDAR={"GPU（NVIDIA）" if gpu else "CPU"}')
+
+    actions = [SetEnvironmentVariable(name, value) for name, value in gpu_env.items()]
+    # model:// を使っていないので、起動時にネットワークのモデル DB を見に行かせない
+    # （繋がらないと数十秒待つ）。
+    actions.append(SetEnvironmentVariable('GAZEBO_MODEL_DATABASE_URI', ''))
+    actions.append(IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(
+            get_package_share_directory('gazebo_ros'), 'launch', 'gzserver.launch.py')),
+        # 画面（gzclient）は出さない。3D の表示は Foxglove に委譲する（設計原則 2）。
+        launch_arguments={'world': world_path, 'verbose': 'false',
+                          'params_file': gazebo_params}.items(),
+    ))
+    spawn = sim_decl['spawn']
+    actions.append(Node(
+        package='gazebo_ros', executable='spawn_entity.py', name='spawn_whill',
+        output='screen',
+        arguments=['-entity', 'whill', '-file', model_path,
+                   '-x', str(spawn['x']), '-y', str(spawn['y']), '-z', '0.0',
+                   '-Y', str(spawn['yaw'])]))
+
+    # /scan は実機と同じ鎖で作る（点群 → pointcloud_to_laserscan）。設定も
+    # 既存スタックのものをそのまま使う。実機はこの前に地面除去（Patchwork++）が
+    # 挟まるが、sim の床は平らなので min_height 0.05 m で床は落ちる。
+    p2ls = os.path.join(_require_existing_stack('whill_navigation'),
+                        'config', 'pointcloud_to_laserscan.yaml')
+    actions.append(Node(
+        package='pointcloud_to_laserscan', executable='pointcloud_to_laserscan_node',
+        name='pointcloud_to_laserscan', output='screen',
+        parameters=[p2ls, {'use_sim_time': use_sim_time}],
+        remappings=[('cloud_in', whill_sim.TOPIC_POINTS), ('scan', '/scan')]))
+    return actions
 
 
 def _static_tf_nodes(robot: dict, use_sim_time: bool) -> list:
@@ -210,9 +316,7 @@ def _setup(context, *args, **kwargs):
             'mode=real はまだ配線していない（実機が手元にないため検証できない）。'
             'docs/open-questions.md の実機検証待ちリストを参照')
     elif mode == 'sim':
-        raise RuntimeError(
-            'mode=sim はまだ配線していない（Phase 0 のスコープ外）。'
-            'sim/ の world 整備後に有効化する')
+        actions.extend(_sim_actions(robot, base, use_sim_time))
 
     # ---- TF ----------------------------------------------------------------
     # replay では出さない。bag に /tf_static が入っているので、こちらからも
@@ -220,13 +324,15 @@ def _setup(context, *args, **kwargs):
     if mode != 'replay':
         actions.extend(_static_tf_nodes(robot, use_sim_time))
 
-    if mode == 'mock':
-        # mock には localizer がいないので map -> odom を identity で固定する。
+    if mode in ('mock', 'sim'):
+        # mock / sim には localizer がいないので map -> odom を identity で固定する。
         # 実機ではこの TF は scan-to-map localizer が出す。両方が出すと
-        # TF が二重になるため、mock 限定であることを名前で明示する。
+        # TF が二重になるため、mock / sim 限定であることを名前で明示する。
+        # sim の odom は車輪の回転から積算するので、滑れば map とずれていく
+        # （実機の odom と同じ性質。localizer が居ないので補正されない）。
         actions.append(Node(
             package='tf2_ros', executable='static_transform_publisher',
-            name='mock_map_to_odom', output='log',
+            name=f'{mode}_map_to_odom', output='log',
             arguments=['--frame-id', 'map', '--child-frame-id', 'odom'],
             parameters=[{'use_sim_time': use_sim_time}]))
 
@@ -242,9 +348,9 @@ def _setup(context, *args, **kwargs):
         ))
 
     # ---- 地図 --------------------------------------------------------------
-    map_yaml = os.path.join(
-        get_package_share_directory('whill_bringup'), 'config', 'mock_corridor.yaml')
-    if mode == 'mock' and os.path.isfile(map_yaml):
+    map_yaml = (_corridor_map_yaml(required=(mode == 'sim'))
+                if mode in ('mock', 'sim') else None)
+    if map_yaml is not None:
         actions.append(Node(
             package='nav2_map_server', executable='map_server', name='map_server',
             output='screen',
@@ -270,7 +376,7 @@ def _setup(context, *args, **kwargs):
         ))
 
     # ---- 速度の調停 --------------------------------------------------------
-    if mode == 'mock':
+    if mode in ('mock', 'sim'):
         # twist_mux を入れないと、gateway の手動操作と E-stop が下流に届かない。
         # Nav2 の velocity_smoother が出す /cmd_vel を誰も消費しないので、
         # 入れる前は mock の車体がそもそも動いていなかった。
@@ -291,7 +397,7 @@ def _setup(context, *args, **kwargs):
     # **`dispatch_launch.py` は include しない。** あれは rosbridge (9090) と
     # 静的 UI の http.server (8000) も一緒に立てる composition で、
     # ROS への口が 2 つ増える（設計原則 1 違反）。要るのはノードだけ。
-    if mode in ('mock', 'real'):
+    if mode in ('mock', 'sim', 'real'):
         actions.append(Node(
             package='whill_dispatch', executable='dispatch_node',
             name='dispatch_node', output='screen',

@@ -1,15 +1,23 @@
 # sim/
 
-Gazebo world と障害物シナリオ。**Phase 0 のスコープ外**（`mode=sim` は未配線で、
-呼ぶと明示的に例外で落ちる）。
+`mode=sim`（Gazebo Classic 11）。起動と確認のしかたは `docs/runbook.md` の「sim」。
 
-実機なしの開発では mock で足りるため、sim の優先度は意図的に低い。ここが要るのは
-「mock の合成廊下では踏めない状況（斜面、動く歩行者、狭隘部）を再現したいとき」。
+## world と車体はここに置いていない
 
-置くもの:
+**廊下の world と車体の SDF は、起動のたびに config から生成する**
+（`ros/src/whill_bringup/whill_bringup/sim.py`）。手で書いたファイルを置かないのは:
 
-- `worlds/` — Gazebo の world。キャンパスの一部を模した屋外環境
-- `scenarios/` — 障害物の配置と動きのシナリオ定義
+- 廊下は **mock の地図と同じ寸法**でなければならない。寸法の正は `scripts/make_mock_map.py`。
+  ずれると「LiDAR は壁を見ているのに地図には無い」になる
+- センサの取り付け位置は**個体 yaml の `tf_static`** が正。SDF に数字を写すと、
+  TF と光線の出どころが食い違う
+- 車体の寸法とセンサの設定は `config/robots/cr2-base.yaml` の `sim`
 
-着手する前に `docs/requirements.md` §2 の設計原則 7 を読むこと。
-**非リアルタイム高速 sim は作らない。**
+食い違いは `tests/ros/test_sim.py` が検査する。
+
+## 置くもの（これから）
+
+- `worlds/` — 廊下では踏めない状況（斜面、狭隘部、キャンパスの一部）を再現する world
+- `scenarios/` — 動く歩行者などのシナリオ
+
+**非リアルタイム高速 sim は作らない**（設計原則 7）。world は実時間で回す。

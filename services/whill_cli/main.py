@@ -36,9 +36,32 @@ app.add_typer(stack_app, name='stack')
 console = Console()
 
 
+def without_venv(env: dict[str, str]) -> dict[str, str]:
+    """uv の venv を外した環境。ROS の子プロセスに渡す。
+
+    `whill` は `uv run` で動くので、PATH の先頭に venv の bin が入っている。
+    そのまま `ros2 launch` に渡すと、`#!/usr/bin/env python3` で始まる ROS の
+    スクリプトが **venv の python3（rclpy も lxml も無い）** で動く。
+    実際に sim の `spawn_entity.py` が `No module named 'lxml'` で落ち、車体が
+    投入されず Nav2 が「応答なし」のままになった（mock では該当するスクリプトを
+    使っていなかったので表に出ていなかった）。
+
+    設計原則 5: CLI は uv、ROS はシステムの python3。境界はここ。
+    """
+    venv = env.get('VIRTUAL_ENV')
+    if not venv:
+        return dict(env)
+    venv_bin = os.path.join(venv, 'bin')
+    result = {key: value for key, value in env.items() if key != 'VIRTUAL_ENV'}
+    parts = [part for part in env.get('PATH', '').split(os.pathsep)
+             if part and os.path.normpath(part) != os.path.normpath(venv_bin)]
+    result['PATH'] = os.pathsep.join(parts)
+    return result
+
+
 def _ros_env() -> dict[str, str]:
-    """launch に渡す環境。config の位置を必ず伝える。"""
-    env = dict(os.environ)
+    """launch に渡す環境。config の位置を必ず伝える。uv の venv は外す。"""
+    env = without_venv(dict(os.environ))
     env.setdefault('WHILL_PLATFORM_CONFIG', str(config.config_root()))
     # 既存リポで実証済み: FastDDS は VelodyneScan 級の大メッセージで詰まる
     env.setdefault('RMW_IMPLEMENTATION', 'rmw_cyclonedds_cpp')
@@ -138,6 +161,12 @@ def doctor(
     cr2-base.yaml の宣言を正として機械的に判定する。
     """
     expected = config.declared_topics(robot, mode, include_camera=camera)
+    if not expected:
+        # 突き合わせる宣言が 0 件なら、何も確かめていない。「0 件すべて publish
+        # されている」と合格にしない（sim でまさにそうなっていた）。
+        console.print(f'[yellow]mode={mode} には確かめるトピックの宣言が無い。'
+                      f'判定していない[/yellow]（cr2-base.yaml の modes.{mode}）')
+        raise typer.Exit(1)
 
     try:
         result = subprocess.run(['ros2', 'topic', 'list'], capture_output=True,

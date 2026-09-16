@@ -89,6 +89,9 @@ whill run --robot cr2-01 --mode mock --gateway --preset cautious
 # bag 再生 (Phase 4)
 whill run --robot cr2-01 --mode replay --gateway --bag bags/2026-07-31-campus
 
+# Gazebo のシミュレーション（下の「sim」を先に読むこと）
+whill run --robot cr2-01 --mode sim --gateway
+
 # 起動せずコマンドだけ見る
 whill run --robot cr2-01 --mode mock --dry-run
 ```
@@ -96,6 +99,51 @@ whill run --robot cr2-01 --mode mock --dry-run
 - `whill: コマンドが見つかりません` と出たら、そのターミナルで `source scripts/env.sh` をしていない
 - 前のスタックが残っていると gateway が 8765 番を取れず、スタックごと失敗して止まる（#49）。
   前のターミナルで Ctrl-C したか確かめる
+
+## sim（Gazebo Classic 11）
+
+mock の合成データではなく、**物理で動く車体と光線の当たる LiDAR** で上位を試したいときに使う。
+廊下は mock の地図と同じ寸法（22 m × 7 m、障害物 1 個）。
+
+### 初回だけ
+
+```bash
+sudo apt-get install -y ros-humble-gazebo-ros-pkgs   # Gazebo Classic 11 と gazebo_ros
+python3 scripts/make_mock_map.py                     # mock と共通の廊下地図（gitignore）
+(cd ros && colcon build --symlink-install --packages-select whill_bringup)
+```
+
+### 起動と確認
+
+```bash
+whill run --robot cr2-01 --mode sim --gateway
+whill doctor --robot cr2-01 --mode sim     # 5 件（odom / 点群 / scan / imu / clock）
+```
+
+- 起動ログに `sim: ... LiDAR=GPU（NVIDIA）` と出れば GPU で動いている。`CPU` なら下の表を見る
+- 画面は gzclient を出さない（3D は Foxglove に委譲。設計原則 2）。俯瞰図と配車で動かす
+- 配車の地点は mock と同じ（west / center / east）。east まで約 22 秒
+
+### mock・実機との違い
+
+| | 実機 | mock | sim |
+|---|---|---|---|
+| 車体 | WHILL CR2 | 速度を積算するだけ | 差動二輪の箱（**寸法は近似**） |
+| LiDAR | VLP-16 | 合成の廊下 | Gazebo の光線（16 リング × 900） |
+| `/scan` | 点群 → 地面除去 → `pointcloud_to_laserscan` | mock が直接出す | 点群 → `pointcloud_to_laserscan`（**地面除去は無し**。床が平らなため） |
+| map → odom | scan-to-map localizer | identity 固定 | identity 固定（**odom は滑るとずれていく**） |
+| バッテリー等 | 出る | 出る | **出ない** |
+| 時刻 | 実時間 | 実時間 | `/clock`（100 Hz） |
+
+### GPU
+
+この PC は Intel 内蔵 + NVIDIA のハイブリッドで、`prime-select` が `on-demand`。
+**何も指定しないと Gazebo は Intel 側で描画する。** launch が自動で PRIME の指定を付ける
+（NVIDIA のモジュールが載っていて、`DISPLAY` があるとき）。
+
+- `nvidia-smi` のプロセス一覧に `gzserver` が出れば NVIDIA で動いている
+- `WHILL_SIM_GPU=off` を付けて起動すると GPU を使わない（CPU の LiDAR。切り分け用）
+- `nvidia-smi` が `Driver/library version mismatch` を出すときは、ドライバ更新後に再起動していない。再起動する
 
 ## stackd（他PC から起動・停止する）
 
@@ -497,7 +545,11 @@ skip の理由がログに出る（全部 skip されて緑、を見逃さない
 | replay で gateway は動いているのにテレメトリが 1 通も届かない | costmap が大きすぎてブラウザの受信上限を超えている可能性。`whill tap -v` で `1/N に間引き` が出るか見る。`costmap_max_cells` を下げる。 |
 | 俯瞰図の地図が粗い | 大きい地図は間引いて送っている。倍率は俯瞰図の右上に出る。細かいところは local costmap で見る（間引かれない）。 |
 | gateway が `address already in use` で落ちる | 前回のプロセスが残っている。`ss -ltnp \| grep 8765` で PID を見て落とす。 |
-| `mode=real` / `mode=sim` で例外が出る | 未配線。仕様どおり（黙って起動しないより落とす）。`docs/open-questions.md` K5。 |
+| `mode=real` で例外が出る | 未配線。仕様どおり（黙って起動しないより落とす）。`docs/open-questions.md` K5。 |
+| sim が `廊下の地図が無い` で落ちる | `python3 scripts/make_mock_map.py` のあと `whill_bringup` をビルドし直す。 |
+| sim の上部帯が「Nav2 応答なし」のまま、tf パネルが `odom -> base_link が来ていない` | 車体が投入されていない。起動ログで `spawn_entity` のエラーを見る。`No module named 'lxml'` なら古い `whill`（venv の python3 を ROS に渡していた。直した）。 |
+| sim の LiDAR が `CPU` と出る | `DISPLAY` が無い（ssh 越しなど）か、NVIDIA のモジュールが載っていない。`nvidia-smi` を見る。 |
+| sim を 2 つ同時に起動すると片方が動かない | Gazebo の master のポート（11345）が衝突する。`GAZEBO_MASTER_URI=http://127.0.0.1:11346` のように変える。 |
 | 上部帯に「Nav2 応答なし」と出る | Nav2 が上がっているはずなのに `lifecycle_manager_navigation/is_active` が答えない。`ros2 node list` で Nav2 のノードが居るか見る。replay なら「起動しない」と出るのが正常（#67）。 |
 | tf パネルが「map → odom が止まっている」 | localizer（実機は scan-to-map、mock は static）が止まっている。bag 再生を一時停止したときも出る（正常）。走行中なら Nav2 が abort する前触れ。 |
 | tf パネルが「… が来ていない」と出る | 宣言（個体 yaml の `tf_static` / `cr2-base.yaml` の `tf.dynamic`）にあるのに届いていない。ノードが上がっていないか、宣言のほうが古い。**宣言と実機が食い違っていたら既存スタックが正。** |

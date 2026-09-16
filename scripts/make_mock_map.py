@@ -28,6 +28,14 @@ RESOLUTION = 0.05
 WALL_THICKNESS = 0.15
 MARGIN = 1.0
 
+# LiDAR だけに見える障害物（地図には描かない）。mock_velodyne の
+# obstacle_x / obstacle_y / obstacle_radius の既定と一対。sim の world も
+# ここから同じ位置に円柱を置く（K5）。地図に描かないのは、「地図に無い物を
+# obstacle_layer が拾って避ける」を mock と sim の両方で踏むため。
+OBSTACLE_X = 6.0
+OBSTACLE_Y = 0.8
+OBSTACLE_RADIUS = 0.3
+
 
 def free_bounds(half_width: float = HALF_WIDTH, length: float = LENGTH,
                 wall_thickness: float = WALL_THICKNESS,

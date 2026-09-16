@@ -85,6 +85,17 @@ def test_declared_topics_for_mock_mode():
     assert not any(t.startswith('/camera/') for t in topics)
 
 
+def test_declared_topics_for_sim_mode():
+    """sim はドライバのノードが無いが、Gazebo が同じトピックを出す（K5）。
+
+    宣言が無いと whill doctor が中身の無い合格を出す。
+    """
+    topics = cli_config.declared_topics('cr2-01', 'sim')
+    assert {'/whill/odom', '/velodyne_points', '/scan', '/imu/data_rep145', '/clock'} <= set(topics)
+    # sim に無いものを要求しない
+    assert '/whill/states/model_cr2' not in topics
+
+
 def test_camera_opt_in_adds_camera_topics():
     topics = cli_config.declared_topics('cr2-01', 'mock', include_camera=True)
     assert any(t.startswith('/camera/') for t in topics)
