@@ -29,11 +29,16 @@ interface ConsoleState extends FrameState {
   followRobot: boolean
   headingUp: boolean
 
+  /** パラメータパネルの絞り込み。camera パネルから「カメラの設定」で
+   *  飛ばすために共有する（#53）。**camera 専用のスライダーは作らない。** */
+  paramFilter: string
+
   setConnection: (state: ConnectionState, detail?: string) => void
   setLatency: (ms: number) => void
   ingest: (frame: Record<string, unknown>, now?: number) => void
   setLayout: (layout: Layout) => void
   setFollowRobot: (value: boolean) => void
+  setParamFilter: (filter: string) => void
   setHeadingUp: (value: boolean) => void
   clearError: () => void
   reset: () => void
@@ -51,6 +56,7 @@ export const useConsoleStore = create<ConsoleState>((set) => ({
   layout: initialLayout,
   followRobot: LAYOUT_DEFAULTS[initialLayout].followRobot,
   headingUp: LAYOUT_DEFAULTS[initialLayout].headingUp,
+  paramFilter: '',
 
   setConnection: (connection, detail = '') =>
     set({
@@ -83,6 +89,7 @@ export const useConsoleStore = create<ConsoleState>((set) => ({
   },
 
   setFollowRobot: (followRobot) => set({ followRobot }),
+  setParamFilter: (paramFilter) => set({ paramFilter }),
   setHeadingUp: (headingUp) => set({ headingUp }),
   clearError: () => set({ lastError: null }),
 

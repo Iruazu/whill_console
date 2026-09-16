@@ -38,6 +38,7 @@
 | 6 | **実機 D435 の画像の大きさと帯域**（#52）。mock（640×480、単純な絵）では 1 枚 17.2 KiB の JSON、1 Hz で 0.13 Mbit/s（`docs/measurements/2026-09-14-camera-bandwidth.md`）。屋外の実画像は数倍になりうる。テザリングで足りるか、`image_publish_rate` を下げる必要があるか。実ドライバ（realsense2_camera 4.55.1）の圧縮トピックの実レートも未確認。 |
 | 6 | **tf の閾値（#51）。** `map -> odom` warn 1.0 / crit 3.0 s、`odom -> base_link` warn 0.5 / crit 2.0 s は代表 bag 1 本（健全）の更新間隔から決めた（`docs/measurements/2026-09-14-tf-intervals.md`）。実機PC が重いときや屋外の長距離で localizer の間隔が伸びて誤検知しないか、TF 凍結のときに Nav2 の abort より先に画面に出るかは未確認。 |
 | 6 | **cr2-01 の tf_static が bag と食い違っている（#51 で露見）。** `cr2-01.yaml` は `camera_link` の親を `velodyne` とし、`base_footprint` を持つ。代表 bag（2026-07-31）では `base_link -> camera_link` で、`base_footprint` は無い。tf パネルは replay でこの 2 つを「注意」と出す。**どちらが正しいかは推測しない。** 実機の URDF（既存スタックは 2026-05-22 に xacro + robot_state_publisher へ移行）と突き合わせて、yaml か bag のどちらが古いかを確かめること。 |
+| 6 | **カメラのパラメータ（#53）。** `rgb_camera.color_profile` と `rgb_camera.enable_auto_exposure` は実ドライバの `rs_launch.py` に名前があり、テストで突き合わせている。**`rgb_camera.exposure` は起動時にセンサの option から生える名前**で、その機体が option を持つかはデバイス次第。実機で `ros2 param list /camera/camera` を見て存在と descriptor（min/max/既定）を確かめ、params.yaml の暫定値（1〜10000 us、既定 156）を置き換えること。`color_profile` の変更がストリーム再起動を伴うか（＝ `live: true` にしてよいか）も `whill params probe` で確かめる。 |
 | 5 | tablet 実機（iPad 等）での ops レイアウトの視認性。Playwright は Chromium 768px で見ているだけで、実機 WebKit と屋外の輝度は見ていない。 |
 | 全体 | 3台での `ROS_DOMAIN_ID` 分離の実確認（21 / 22 / 23 を割り当て済み、未検証）。 |
 

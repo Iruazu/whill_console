@@ -27,7 +27,10 @@ export function ParamsPanel({ send }: ParamsPanelProps) {
   const changes = useConsoleStore((s) => s.paramChanges)
   const revisions = useConsoleStore((s) => s.paramRevision)
   const status = useConsoleStore((s) => s.status)
-  const [filter, setFilter] = useState('')
+  // 絞り込みは store に置く。camera パネルから「カメラの設定」で
+  // ここに飛ばすため（#53）。camera 専用のスライダーは作らない。
+  const filter = useConsoleStore((s) => s.paramFilter)
+  const setFilter = useConsoleStore((s) => s.setParamFilter)
   const [liveOnly, setLiveOnly] = useState(false)
 
   // 走行中かどうかは gateway が /cmd_vel から判定して status に載せる（#67）。

@@ -1422,3 +1422,63 @@ test.describe('Nav2 の状態表示（#67）', () => {
     await expect(input).toBeDisabled()
   })
 })
+
+test.describe('カメラの設定への導線（#53）', () => {
+  const CAMERA_PARAMS = [
+    {
+      key: 'camera.rgb_camera.color_profile', node: 'camera', name: 'rgb_camera.color_profile',
+      ros_node: '/camera/camera', type: 'string', value: '640,480,6', default: '640,480,6',
+      range: null, unit: null, live: false, safety_class: 'none',
+      description: 'カラーストリームの 幅,高さ,FPS。',
+    },
+    {
+      key: 'camera.rgb_camera.exposure', node: 'camera', name: 'rgb_camera.exposure',
+      ros_node: '/camera/camera', type: 'int', value: 156, default: 156,
+      range: { min: 1, max: 10000, step: 1 }, unit: 'us', live: true, safety_class: 'none',
+      description: 'カラー画像の露出時間。',
+    },
+  ]
+
+  test('camera パネルからパラメータに辿れる（専用スライダーは作らない）', async ({ page }) => {
+    await openWithToken(page)
+    await page.evaluate((params) => {
+      const w = window as unknown as { __whillIngest: (f: Record<string, unknown>) => void }
+      w.__whillIngest({ type: 'params', params })
+    }, CAMERA_PARAMS)
+
+    await page.getByTestId('camera-toggle').click()
+    await page.getByTestId('camera-params-link').click()
+
+    // camera パネルの中にスライダーを作らない。出るのはパラメータパネルのほう
+    await expect(page.getByTestId('camera')).not.toContainText('露出時間')
+    await expect(page.getByTestId('params-filter')).toHaveValue('camera.')
+    await expect(page.getByTestId('param-camera.rgb_camera.exposure')).toBeVisible()
+    // live: false のものは操作できない（実機で probe を通すまで安全側）
+    await expect(page.getByTestId('input-camera.rgb_camera.color_profile')).toBeDisabled()
+  })
+
+  test('カメラのパラメータがパラメータパネルに出る', async ({ page }, testInfo) => {
+    await openWithToken(page)
+    await page.evaluate((params) => {
+      const w = window as unknown as { __whillIngest: (f: Record<string, unknown>) => void }
+      w.__whillIngest({ type: 'params', params })
+    }, CAMERA_PARAMS)
+    await page.getByTestId('camera-toggle').click()
+    await page.getByTestId('camera-params-link').click()
+    await expect(page.getByTestId('param-camera.rgb_camera.exposure')).toBeVisible()
+    await page.screenshot({
+      path: `${SHOT_DIR}/${testInfo.project.name}-camera-params.png`,
+      fullPage: true,
+    })
+  })
+
+  test('カメラのパラメータが無ければ導線を出さない', async ({ page }) => {
+    await openWithToken(page)
+    await page.evaluate(() => {
+      const w = window as unknown as { __whillIngest: (f: Record<string, unknown>) => void }
+      w.__whillIngest({ type: 'params', params: [] })
+    })
+    await page.getByTestId('camera-toggle').click()
+    await expect(page.getByTestId('camera-params-link')).toHaveCount(0)
+  })
+})

@@ -36,6 +36,10 @@ schema_version: 1
 node_aliases:
   local_costmap: /local_costmap/local_costmap
   global_costmap: /global_costmap/global_costmap
+  # realsense2_camera は camera_namespace / camera_name がどちらも既定 camera
+  # なので実ノードは /camera/camera（トピックが /camera/camera/color/... なのと
+  # 一致する）。モックも同じ名前で起動する（#53）。
+  camera: /camera/camera
 
 params:
   # ---- controller_server / RegulatedPurePursuit ------------------------------
@@ -591,3 +595,53 @@ params:
     live: false
     safety_class: none
     description: WebSocket の待ち受けポート。
+
+  # ---- カメラ（realsense2_camera 4.55.1 / mock_realsense）--------------------
+  # 名前は実ドライバの rs_launch.py の宣言に合わせてある。ここが食い違うと
+  # 「mock では動くが実機では知らないパラメータ」になる（#53）。
+  # tests/services/test_camera_params.py が実ドライバの宣言と突き合わせる。
+
+  - node: camera
+    name: rgb_camera.color_profile
+    type: string
+    default: "640,480,6"
+    range: null
+    unit: null
+    live: false
+    safety_class: none
+    description: >-
+      カラーストリームの「幅,高さ,FPS」。実ドライバの既定は 0,0,0（ドライバ任せ）
+      だが、帯域を決める値なので明示する。640x480 / 6 Hz で 1 枚 17.2 KiB、
+      gateway が 1 Hz に間引いて 0.13 Mbit/s（docs/measurements/2026-09-14-camera-bandwidth.md）。
+      **live: false は「分からないから安全側」。** 解像度変更がストリームの
+      再起動を伴うかは実機でしか確かめられない。実機で whill params probe を
+      通してから live: true にすること。
+
+  - node: camera
+    name: rgb_camera.enable_auto_exposure
+    type: bool
+    default: true
+    range: null
+    unit: null
+    live: true
+    safety_class: none
+    description: >-
+      カラー画像の自動露出。屋外の逆光で白飛び・黒つぶれするときに切って
+      exposure を手で決める。カメラは Nav2 の入力ではない（costmap は LiDAR）
+      ので安全区分は none。sam_infer（#54）がカメラを入力にするなら見直すこと。
+
+  - node: camera
+    name: rgb_camera.exposure
+    type: int
+    default: 156
+    range: {min: 1, max: 10000, step: 1}
+    unit: us
+    live: true
+    safety_class: none
+    description: >-
+      カラー画像の露出時間。enable_auto_exposure が true のときは効かない。
+      **この名前は launch 宣言ではなく、起動時にセンサの option から生える**
+      （実ドライバの ros_sensor.cpp が module 名 + option 名で declare する）。
+      その機体がこの option を持つかはデバイス次第なので、**実機で
+      ros2 param list を見るまで存在は未確認**。
+      **既定値と範囲も暫定。** 実機の descriptor（min/max）で置き換えること。

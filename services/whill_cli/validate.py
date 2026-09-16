@@ -152,6 +152,9 @@ BASE_SCHEMA: dict[str, Any] = {
                     'description': {'type': 'string'},
                     'real_package': {'type': 'string'},
                     'mock_node': {'type': 'string', 'minLength': 1},
+                    # 実ドライバのノード名（完全修飾）。モックも同じ名前で起動し、
+                    # params.yaml の node_aliases もここに合わせる（#53）。
+                    'ros_node': {'type': 'string', 'pattern': '^/'},
                     'qos': {'enum': ['sensor_data', 'default']},
                     'enabled_by_default': {'type': 'boolean'},
                     'cold_boot_sequence': {'type': 'array', 'items': {'type': 'string'}},

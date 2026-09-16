@@ -635,3 +635,13 @@ body {
 .tf-row { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; flex-wrap: wrap; }
 .tf-frame { font-family: ui-monospace, monospace; }
 .badge.level-static, .badge.level-unjudged { color: var(--muted); border-color: var(--border); }
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent, #6aa9ff);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}

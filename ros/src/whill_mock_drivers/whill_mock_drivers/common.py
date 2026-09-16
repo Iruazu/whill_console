@@ -89,8 +89,11 @@ class MockDriverNode(Node):
 
     driver_name: str = ''
 
-    def __init__(self, node_name: str) -> None:
-        super().__init__(node_name)
+    def __init__(self, node_name: str, *, namespace: str = '') -> None:
+        # 名前空間は実ドライバに合わせるためだけにある（realsense は
+        # /camera/camera。#53）。launch から name / namespace を渡された場合は
+        # そちらが優先される。
+        super().__init__(node_name, namespace=namespace)
         self.declare_parameter('robot_id', 'cr2-01')
         self.robot_id = self.get_parameter('robot_id').value
 

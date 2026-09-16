@@ -76,6 +76,11 @@ drivers:
     description: D435。開発中は opt-in（既定では起動しない）。CPU 負荷が大きい。
     real_package: realsense2_camera
     mock_node: mock_realsense
+    # 実ドライバのノード名。realsense2_camera は camera_namespace / camera_name が
+    # どちらも既定 camera なので /camera/camera になる。**モックも同じ名前で
+    # 起動する**（#53）。名前が違うと、params.yaml に書いたカメラのパラメータが
+    # mock では別ノード宛てになり、実機なしで一度も動かないスライダーができる。
+    ros_node: /camera/camera
     enabled_by_default: false
     publishes:
       - {topic: /camera/camera/color/image_raw/compressed, type: sensor_msgs/msg/CompressedImage, rate_hz: 6.0}
