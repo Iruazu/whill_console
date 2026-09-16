@@ -36,32 +36,29 @@ hardware:
 
 # base_link 基準の静的 TF。単位は m / rad。
 tf_static:
+  # cr2-01 の値を仮置きしてある（同型のため）。**実車が来たら採寸して置き換える。**
+  # 値の出どころは cr2-01.yaml と同じ（既存スタックの static_tf_launch.py）。
   imu_link:
     parent: base_link
-    xyz: [0.20, 0.0, 0.42]
-    rpy: [0.0, 0.0, 0.0]
+    xyz: [0.38, -0.03, 0.47]
+    rpy: [-0.0713, -0.1415, 0.0]
     measured: false
-    note: 座面上、車体中心線上。左アームレスト内面から約 22 cm。
+    note: cr2-01 の値（2026-07-10 に cr2-01 の実車で採寸したもの）の仮置き。**この個体では採寸していない。** 実車が来たら採寸して置き換える。
   velodyne:
     parent: base_link
-    xyz: [0.42, 0.36, 0.78]
-    rpy: [0.0, 0.157, 0.0]
+    xyz: [0.484136, 0.381548, 0.793704]
+    rpy: [-0.035342, 0.156983, -0.005527]
     measured: false
-    note: >-
-      Y と Z は採寸済み（左アームレスト外面から水平 8 cm / 垂直 10 cm）。
-      X（前後）は未採寸でアームレスト前端から推定した値。pitch +9deg は noetic 由来。
+    note: cr2-01 の値の仮置き。元は採寸値ではなく、noetic の LiDAR<->IMU 外部パラメータを imu_link の位置に足した合成値。**この個体では未確認。**
   camera_link:
-    parent: velodyne
-    xyz: [0.0, 0.0, -0.103]
-    rpy: [0.0, 0.0, 0.0]
-    measured: false
-    note: 3Dプリント製ブラケット約 103 mm。回転は identity 仮置き。ヨー/ロールは未計測。
-  base_footprint:
     parent: base_link
-    xyz: [0.0, 0.0, -0.1175]
+    xyz: [0.54, 0.382, 0.79]
     rpy: [0.0, 0.0, 0.0]
     measured: false
-    note: 接地面。
+    note: cr2-01 の値の仮置き。親は base_link（既存スタックと同じ）。姿勢は identity 仮置きで、**この個体では未確認。**
+  # base_footprint は置かない。**既存スタックが publish しておらず、Nav2 の
+  # robot_base_frame も base_link。** 誰も使わないフレームを宣言すると、
+  # tf パネル（#51）が毎回「来ていない」と出す。接地面が要るときに入れる。
 
 # cr2-base の telemetry 閾値をこの個体だけ上書きする場合に書く。
 telemetry_overrides: {}
