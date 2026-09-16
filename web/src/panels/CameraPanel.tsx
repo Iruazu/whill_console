@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 
+import { measuredHz, pushArrival } from '../lib/camera'
 import { imageMime } from '../lib/streams'
-import { CAMERA_PARAM_PREFIX } from '../lib/params'
+import { CAMERA_PARAM_PREFIX, IMAGE_RATE_PARAM } from '../lib/params'
 import { useConsoleStore } from '../state/store'
 
 /** カメラ（#52）。dev レイアウトだけに出す。
@@ -42,6 +43,7 @@ export function CameraPanel({ setImageSubscribed }: CameraPanelProps) {
   const [open, setOpen] = useState(false)
   const [openedAt, setOpenedAt] = useState<number | null>(null)
   const [now, setNow] = useState(() => Date.now())
+  const [arrivals, setArrivals] = useState<number[]>([])
   const image = useConsoleStore((s) => s.image)
   const params = useConsoleStore((s) => s.params)
   const setParamFilter = useConsoleStore((s) => s.setParamFilter)
@@ -58,6 +60,12 @@ export function CameraPanel({ setImageSubscribed }: CameraPanelProps) {
   // 閉じずに画面を離れる（レイアウト切り替えなど）ときも外す。
   useEffect(() => () => setImageSubscribed(false), [setImageSubscribed])
 
+  // 実測レート（ADR-0007）。宣言値ではなく、実際に届いた間隔から出す。
+  useEffect(() => {
+    if (receivedAt === undefined) return
+    setArrivals((times) => pushArrival(times, receivedAt))
+  }, [receivedAt])
+
   // 「n 秒前」を進めるための時計。開いているあいだだけ回す。
   useEffect(() => {
     if (!open) return
@@ -65,7 +73,15 @@ export function CameraPanel({ setImageSubscribed }: CameraPanelProps) {
     return () => window.clearInterval(timer)
   }, [open])
 
+  const showParams = (filter: string) => {
+    setParamFilter(filter)
+    document
+      .querySelector('[data-testid="params"]')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   const age = receivedAt === undefined ? null : now - receivedAt
+  const hz = measuredHz(arrivals, now)
   const stale = age !== null && age > IMAGE_STALE_MS
   const neverArrived =
     open && image === null && openedAt !== null && now - openedAt > IMAGE_NEVER_MS
@@ -90,21 +106,28 @@ export function CameraPanel({ setImageSubscribed }: CameraPanelProps) {
 
       {open && (
         <div className="camera-body">
-          {params.some((spec) => spec.key.startsWith(CAMERA_PARAM_PREFIX)) && (
-            <button
-              type="button"
-              className="link-button"
-              data-testid="camera-params-link"
-              onClick={() => {
-                setParamFilter(CAMERA_PARAM_PREFIX)
-                document
-                  .querySelector('[data-testid="params"]')
-                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              }}
-            >
-              露出・解像度の設定を出す
-            </button>
-          )}
+          <div className="camera-links">
+            {params.some((spec) => spec.key.startsWith(CAMERA_PARAM_PREFIX)) && (
+              <button
+                type="button"
+                className="link-button"
+                data-testid="camera-params-link"
+                onClick={() => showParams(CAMERA_PARAM_PREFIX)}
+              >
+                露出・解像度の設定を出す
+              </button>
+            )}
+            {params.some((spec) => spec.key === IMAGE_RATE_PARAM) && (
+              <button
+                type="button"
+                className="link-button"
+                data-testid="camera-rate-link"
+                onClick={() => showParams(IMAGE_RATE_PARAM)}
+              >
+                配信レートの設定を出す
+              </button>
+            )}
+          </div>
           {image ? (
             <figure className={`camera-frame${stale ? ' stale' : ''}`}>
               <img
@@ -115,7 +138,8 @@ export function CameraPanel({ setImageSubscribed }: CameraPanelProps) {
               <figcaption data-testid="camera-age">
                 {stale
                   ? `${Math.round((age ?? 0) / 1000)} 秒前の画像（更新が止まっている）`
-                  : '最新'}
+                  : /* 実測。宣言値ではない（設定 6 Hz なのに 1 Hz、を見つけるため） */
+                    `最新${hz === null ? '' : `（実測 ${hz.toFixed(1)} Hz）`}`}
               </figcaption>
             </figure>
           ) : neverArrived ? (

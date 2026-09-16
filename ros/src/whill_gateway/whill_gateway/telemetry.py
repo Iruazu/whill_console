@@ -83,6 +83,18 @@ def _stamp_seconds(header) -> float:
     return header.stamp.sec + header.stamp.nanosec / 1e9
 
 
+JITTER_TOLERANCE = 0.1
+"""到着の揺れをどれだけ許すか（周期に対する割合）。
+
+**入力と同じレートに制限すると、揺れのぶんだけ落ちる。** 6 Hz で出るカメラを
+6 Hz に制限したら、実測 4.3 Hz しか通らなかった（到着が 1/6 秒をわずかに
+下回るたびに 1 枚落ちるため）。レート制限は帯域を守るためのものであって、
+宣言どおりのレートで来た入力を 3 割捨てるのは目的から外れている。
+
+1 割にしてあるのは、制限を超えて増える量を 1 割で抑えるため。
+"""
+
+
 class RateLimiter:
     """一定間隔でしか通さない。時刻は呼び出し側が渡す。
 
@@ -96,7 +108,8 @@ class RateLimiter:
     def allow(self, now: float) -> bool:
         if self.period <= 0.0:
             return True
-        if self._last is None or now - self._last >= self.period:
+        # 周期ちょうどで来たものを落とさない（JITTER_TOLERANCE）。
+        if self._last is None or now - self._last >= self.period * (1.0 - JITTER_TOLERANCE):
             self._last = now
             return True
         return False

@@ -5,3 +5,6 @@
  */
 
 export const CAMERA_PARAM_PREFIX = 'camera.'
+
+/** 画像の配信レート（gateway のレート制限）。camera パネルからここへ飛ばす。 */
+export const IMAGE_RATE_PARAM = 'whill_gateway.image_publish_rate'
