@@ -36,32 +36,43 @@ hardware:
 
 # base_link 基準の静的 TF。単位は m / rad。
 tf_static:
+  # **値は既存スタック（~/whill_lab0_ros2）の static_tf_launch.py が正。**
+  # ここは写しであって、こちらで決めた値ではない。既存スタックが実車を走らせて
+  # いるので、食い違ったら本リポ側のバグ（CLAUDE.md「既存スタックとの関係」）。
+  # 代表 bag（2026-07-31）の /tf_static とも一致することを確認済み。
+  # 写した日: 2026-09-16（#51 の tf パネルが食い違いを検出したため）
   imu_link:
     parent: base_link
-    xyz: [0.20, 0.0, 0.42]
-    rpy: [0.0, 0.0, 0.0]
+    xyz: [0.38, -0.03, 0.47]
+    rpy: [-0.0713, -0.1415, 0.0]
     measured: true
-    note: 座面上、車体中心線上。左アームレスト内面から約 22 cm。
+    note: >-
+      2026-07-10 に実車で再採寸した値（既存リポ Issue #61）。roll -4.09deg /
+      pitch -8.11deg。以前ここに書いていた [0.20, 0.0, 0.42] / rpy 0 は
+      noetic 時代の古い値で、実機ともbagとも違っていた。
   velodyne:
     parent: base_link
-    xyz: [0.42, 0.36, 0.78]
-    rpy: [0.0, 0.157, 0.0]
+    xyz: [0.484136, 0.381548, 0.793704]
+    rpy: [-0.035342, 0.156983, -0.005527]
     measured: false
     note: >-
-      Y と Z は採寸済み（左アームレスト外面から水平 8 cm / 垂直 10 cm）。
-      X（前後）は未採寸でアームレスト前端から推定した値。pitch +9deg は noetic 由来。
+      採寸値ではなく合成値。noetic の LiDAR<->IMU 外部パラメータを、再採寸した
+      imu_link の位置に足して base_link 基準に直したもの（既存リポの
+      static_tf_launch.py に導出が書いてある）。LiDAR は IMU と同じ機構に
+      共締めされており、相対は動いていない前提。
   camera_link:
-    parent: velodyne
-    xyz: [0.0, 0.0, -0.103]
+    parent: base_link
+    xyz: [0.54, 0.382, 0.79]
     rpy: [0.0, 0.0, 0.0]
     measured: false
-    note: 3Dプリント製ブラケット約 103 mm。回転は identity 仮置き。ヨー/ロールは未計測。
-  base_footprint:
-    parent: base_link
-    xyz: [0.0, 0.0, -0.1175]
-    rpy: [0.0, 0.0, 0.0]
-    measured: true
-    note: 接地面。
+    note: >-
+      **親は velodyne ではなく base_link。** 既存スタックも bag もそうなっている。
+      値は簡易測定（LiDAR よりわずかに前方、y/z は LiDAR と同等）で、姿勢は
+      identity 仮置き。既存リポに target-based キャリブの TODO が残っている。
+      カメラは Nav2 の入力ではないので、当面この精度で困らない。
+  # base_footprint は置かない。**既存スタックが publish しておらず、Nav2 の
+  # robot_base_frame も base_link。** 誰も使わないフレームを宣言すると、
+  # tf パネル（#51）が毎回「来ていない」と出す。接地面が要るときに入れる。
 
 # cr2-base の telemetry 閾値をこの個体だけ上書きする場合に書く。
 telemetry_overrides: {}
