@@ -126,6 +126,39 @@ tf:
     - {parent: map,  child: odom,      source: scan-to-map localizer, warn_sec: 1.0, crit_sec: 3.0}
     - {parent: odom, child: base_link, source: EKF,                   warn_sec: 0.5, crit_sec: 2.0}
 
+# sim（Gazebo Classic 11）の車体とセンサ（K5）。
+#
+# **車体の寸法は採寸値ではなく近似。** Nav2 の robot_radius 0.45 m に収まる箱と
+# 差動二輪にしてある。sim で見たいのは「上位（Nav2 / gateway / 画面）が実機と
+# 同じ配線で動くか」であって、車体の力学ではない（設計原則 7）。
+#
+# センサの取り付け位置は個体 yaml の tf_static が正（ここには書かない）。
+# トピック名は drivers の publishes / subscribes が正（ここには書かない）。
+sim:
+  body: {length: 0.9, width: 0.6, height: 0.3, mass: 100.0}
+  drive_wheel: {radius: 0.135, separation: 0.5, width: 0.06}
+  # 差動二輪プラグインの更新周期。実ドライバの /whill/odom は 2.5 Hz だが、
+  # プラグインは同じ周期で指令も反映するので、2.5 Hz にすると走りががくつく。
+  # odom が宣言より速く出るのは上位に害が無い（遅いほうが困る）。
+  drive_update_hz: 20.0
+  # /clock の周期。gazebo_ros の既定は 10 Hz で、use_sim_time のノードから見た
+  # 時刻が 0.1 s 刻みになる（Nav2 の controller は 20 Hz で回るので、同じ時刻を
+  # 2 回見る）。
+  clock_hz: 100.0
+  # VLP-16 相当。実機と同じく点群を出し、/scan は pointcloud_to_laserscan が作る。
+  lidar:
+    rings: 16
+    min_elevation_deg: -15.0
+    max_elevation_deg: 15.0
+    horizontal_resolution_deg: 0.4
+    range_min: 0.4
+    range_max: 100.0
+    noise_stddev: 0.01
+  imu: {noise_stddev: 0.0005}
+  # 車体を置く位置。mock_whill_serial の初期姿勢と同じ原点（map -> odom を
+  # identity で固定しているため、ここがずれると地図と odom がずれる）。
+  spawn: {x: 0.0, y: 0.0, yaw: 0.0}
+
 # モード別に起動するものの宣言。whill_cli の --mode がこれを引く。
 modes:
   real:
@@ -134,8 +167,16 @@ modes:
     include_stack: true
     use_sim_time: false
   sim:
-    description: Gazebo + 既存 Nav2 スタック
+    description: >-
+      Gazebo Classic 11 + 既存 Nav2 スタック。廊下は mock の地図と同じ寸法で、
+      センサと配線は実機と同じ鎖（点群 → pointcloud_to_laserscan → /scan）。
     drivers: []
+    # ドライバのノードは無いが、Gazebo のプラグインが同じトピックを出す。
+    # ここに書かないと whill doctor が「0 件すべて publish されている」と中身の
+    # 無い合格を出す（実際にそうなっていた）。
+    # 実ドライバが出す /whill/states/model_cr2（バッテリー等）と /imu/temperature は
+    # sim には無い。
+    publishes: [/whill/odom, /velodyne_points, /scan, /imu/data_rep145, /clock]
     include_stack: true
     use_sim_time: true
   mock:

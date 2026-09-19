@@ -14,6 +14,10 @@
   <exec_depend>nav2_lifecycle_manager</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>twist_mux</exec_depend>
+  <!-- mode=sim（K5）。Gazebo Classic 11 -->
+  <exec_depend>gazebo_ros</exec_depend>
+  <exec_depend>gazebo_plugins</exec_depend>
+  <exec_depend>pointcloud_to_laserscan</exec_depend>
   <exec_depend>whill_mock_drivers</exec_depend>
   <exec_depend>whill_params</exec_depend>
   <exec_depend>whill_gateway</exec_depend>

@@ -270,6 +270,31 @@ Phase 6 で分かったこと（随時追記）:
 - ops では木を出さず、止まったときだけ一行で出す。tf は既定の購読に入れた
   （パネルを開いていない端末でも止まったことが届くように）
 
+### mode=sim（K5 の一部、2026-09-16）
+
+Gazebo Classic 11 で `whill run --mode sim --gateway` が起動し、配車で走る。
+
+**受け入れ**: 上部帯が「Nav2 動作中」、tf パネルに異常なし、`whill doctor --mode sim` が
+5 件を確認、配車で east まで走り切る（22.4 s、3 回とも）。→ **達成**
+（`docs/measurements/2026-09-16-sim-acceptance.md`）
+
+分かったこと:
+
+- **Humble の組み合わせは Gazebo Classic 11。** Nav2 Humble 自身の sim 例が Classic を使う。
+  Ignition（Fortress）は `ros_gz` のブリッジとプラグイン名を自前で組む手数が増える
+- **実機の `/scan` は LiDAR の生データではない。** 点群 → 地面除去 → `pointcloud_to_laserscan`
+  （frame=base_link）で作られている。sim も点群だけを出し、同じノード・同じ設定で `/scan`
+  を作る。Gazebo から LaserScan を直接出すと、傾けて付けた LiDAR が床を障害物として拾う
+- **`whill run` が uv の venv を ROS に持ち込んでいた。** `#!/usr/bin/env python3` の ROS
+  スクリプトが venv の python3 で動き、`spawn_entity.py` が `No module named 'lxml'` で
+  落ちた。mock では該当スクリプトを使っておらず、表に出ていなかった
+- **`whill doctor` が中身の無い合格を出していた。** 宣言が 0 件のモードで「0 件すべて
+  publish されている」。0 件なら判定しないと言うようにした
+- **ハイブリッド GPU の on-demand では、指定しないと Intel で描画する。** PRIME の
+  オフロード指定を launch が付ける
+- gazebo_ros の `/clock` は既定 10 Hz。use_sim_time のノードから見た時刻が 0.1 s 刻みに
+  なるので 100 Hz に上げた
+
 ## 5. 作業規約
 
 `CLAUDE.md` の「作業規約」が正。要点:

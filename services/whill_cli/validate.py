@@ -135,6 +135,16 @@ DERIVED_TELEMETRY_ITEM = {
     },
 }
 
+def _positive_object(keys: list[str]) -> dict[str, Any]:
+    """全部が正の数の、決まったキーだけを持つオブジェクト。"""
+    return {
+        'type': 'object',
+        'additionalProperties': False,
+        'required': keys,
+        'properties': {key: {'type': 'number', 'exclusiveMinimum': 0} for key in keys},
+    }
+
+
 BASE_SCHEMA: dict[str, Any] = {
     '$schema': 'https://json-schema.org/draft/2020-12/schema',
     'type': 'object',
@@ -214,6 +224,47 @@ BASE_SCHEMA: dict[str, Any] = {
                 },
             },
         },
+        # sim の車体とセンサ（K5）。寸法は近似。
+        'sim': {
+            'type': 'object',
+            'additionalProperties': False,
+            'required': ['body', 'drive_wheel', 'drive_update_hz', 'clock_hz', 'lidar', 'imu',
+                         'spawn'],
+            'properties': {
+                'body': _positive_object(['length', 'width', 'height', 'mass']),
+                'drive_wheel': _positive_object(['radius', 'separation', 'width']),
+                'drive_update_hz': {'type': 'number', 'exclusiveMinimum': 0},
+                'clock_hz': {'type': 'number', 'exclusiveMinimum': 0},
+                'lidar': {
+                    'type': 'object',
+                    'additionalProperties': False,
+                    'required': ['rings', 'min_elevation_deg', 'max_elevation_deg',
+                                 'horizontal_resolution_deg', 'range_min', 'range_max',
+                                 'noise_stddev'],
+                    'properties': {
+                        'rings': {'type': 'integer', 'minimum': 1},
+                        'min_elevation_deg': {'type': 'number'},
+                        'max_elevation_deg': {'type': 'number'},
+                        'horizontal_resolution_deg': {'type': 'number', 'exclusiveMinimum': 0},
+                        'range_min': {'type': 'number', 'minimum': 0},
+                        'range_max': {'type': 'number', 'exclusiveMinimum': 0},
+                        'noise_stddev': {'type': 'number', 'minimum': 0},
+                    },
+                },
+                'imu': {
+                    'type': 'object',
+                    'additionalProperties': False,
+                    'required': ['noise_stddev'],
+                    'properties': {'noise_stddev': {'type': 'number', 'minimum': 0}},
+                },
+                'spawn': {
+                    'type': 'object',
+                    'additionalProperties': False,
+                    'required': ['x', 'y', 'yaw'],
+                    'properties': {k: {'type': 'number'} for k in ('x', 'y', 'yaw')},
+                },
+            },
+        },
         'modes': {
             'type': 'object',
             'minProperties': 1,
@@ -224,6 +275,10 @@ BASE_SCHEMA: dict[str, Any] = {
                 'properties': {
                     'description': {'type': 'string'},
                     'drivers': {'type': 'array', 'items': {'type': 'string'}},
+                    # ドライバ以外（Gazebo のプラグインなど）が出すトピック。
+                    # whill doctor がドライバの宣言と合わせて突き合わせる（K5）。
+                    'publishes': {'type': 'array',
+                                  'items': {'type': 'string', 'pattern': '^/'}},
                     'include_stack': {'type': 'boolean'},
                     'use_sim_time': {'type': 'boolean'},
                 },

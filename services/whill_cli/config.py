@@ -95,7 +95,8 @@ def declared_topics(robot_id: str, mode: str, *, include_camera: bool = False) -
     if include_camera and 'realsense' not in drivers:
         drivers.append('realsense')
 
-    topics: list[str] = []
+    # ドライバ以外が出すもの（sim の Gazebo プラグインなど）
+    topics: list[str] = list(modes[mode].get('publishes') or [])
     for driver in drivers:
         declaration = (base.get('drivers') or {}).get(driver) or {}
         for entry in declaration.get('publishes') or []:
