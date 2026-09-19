@@ -569,6 +569,27 @@ whill latency --repeats 20
 mock での基準線: E-STOP 中央 30 ms、ハートビート断 430 ms
 （`docs/measurements/2026-09-19-stop-time-mock.md`）。**実機の値ではない。**
 
+## live テスト（実 gateway に繋いで確かめる）
+
+`web/tests/live*.spec.ts` の **10 件**は gateway が要るので**既定で skip** され、CI でも
+走らない。手順が長いと誰も走らせなくなるので、起動から停止まで 1 本にまとめてある。
+
+```bash
+./scripts/live-test.sh          # mock と replay（約 2 分）
+./scripts/live-test.sh mock     # mock だけ
+```
+
+- **8765 が塞がっていたら何もせずに終わる。** 動いているスタックを踏み潰さないため
+- スタックは**平文**で上げる（Playwright の開発サーバは http なので、ブラウザは ws:// で繋ぐ）
+- Nav2 が active になるまで待ってからテストを始める（配車のテストが早すぎて落ちる）
+- 「gateway を落として上げ直すと再接続する」テストだけは、**途中でスタックを再起動**して
+  成立させる（gateway が死ぬと launch ごと止まる設計 — #49）
+- 終わったら自分が起動したものを止め、port が空いたことまで確かめる
+- 失敗したときは `/tmp/whill-live-test/` にログと Playwright の痕跡が残る
+
+`pnpm exec playwright test` だけを打つと live は skip される（`WHILL_LIVE=1` が要る）。
+**「全部 skip で緑」を見逃さないこと。**
+
 ## 落ちたとき
 
 | 症状 | 原因と対処 |

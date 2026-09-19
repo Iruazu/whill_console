@@ -62,3 +62,19 @@ def test_missing_uv_is_explained(tmp_path):
                             env=env, capture_output=True, text=True, timeout=30)
     assert result.returncode == 127
     assert 'uv が見つからない' in result.stderr
+
+
+def test_whill_tls_off_clears_values_already_in_the_environment():
+    """`WHILL_TLS=off` が、既に入っている TLS の変数も消すこと。
+
+    消さないと「平文で上げたつもりの gateway が wss で待ち受ける」。同じシェルで
+    先に（off 無しで）source していると起きる。live テストで実際に踏んだ:
+    ブラウザは ws:// で繋ぐので、接続できずに 5 件まとめて落ちた。
+    """
+    script = (
+        'export WHILL_TLS_CERT=/tmp/x.crt WHILL_TLS_KEY=/tmp/x.key WHILL_TLS_CA=/tmp/ca.crt; '
+        f'export WHILL_TLS=off; source {ROOT}/scripts/env.sh >/dev/null 2>&1; '
+        'echo "[${WHILL_TLS_CERT}${WHILL_TLS_KEY}${WHILL_TLS_CA}]"'
+    )
+    result = _in_fresh_shell(script)
+    assert '[]' in result.stdout, result.stdout
