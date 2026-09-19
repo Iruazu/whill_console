@@ -303,10 +303,54 @@ body {
 .app.layout-ops .panel.overview { flex: 3; min-height: 0; }
 .app.layout-ops .side { flex: 2; min-height: 0; overflow: auto; }
 
-/* 現場では指で押す。dev の 12px のボタンでは小さい。 */
-.app.layout-ops .dispatch-targets button { padding: 14px 20px; font-size: 15px; }
-.app.layout-ops .panel.dispatch > button.danger { padding: 10px 18px; font-size: 14px; }
-.app.layout-ops .estop { padding: 10px 22px; font-size: 15px; }
+/* 現場では指で押す。**押せる大きさを数字で決める。**
+ *
+ *   - 触る要素は 44px 角以上（Apple HIG の最小。実測で E-STOP が 37px しか
+ *     なかった — **いちばん押さねばならないボタンが一番小さかった**）
+ *   - E-STOP と行き先は 56px 以上（手袋、揺れる車体、片手を想定して 1 段上げる）
+ *   - 隣り合う操作は 12px 以上あける（実測で行き先ボタンの間隔が 6px だった。
+ *     押し間違えると別の場所へ走り出す）
+ *
+ * dev（机の上）はこの限りではない。ops だけを広げる。
+ * 数字は tests/ops-touch.spec.ts が実寸で検査する。 */
+.app.layout-ops button,
+.app.layout-ops select,
+.app.layout-ops .overview-controls label {
+  min-height: 44px;
+}
+.app.layout-ops .dispatch-targets {
+  gap: 12px;
+}
+.app.layout-ops .dispatch-targets button {
+  padding: 14px 20px;
+  font-size: 16px;
+  min-height: 56px;
+  min-width: 96px;
+}
+.app.layout-ops .panel.dispatch > button.danger {
+  padding: 10px 18px;
+  font-size: 15px;
+  min-height: 44px;
+  /* 行き先のすぐ下。押し間違えると走行を取り消す（またはその逆）。 */
+  margin-top: 12px;
+}
+.app.layout-ops .estop {
+  padding: 10px 24px;
+  font-size: 17px;
+  min-height: 56px;
+  min-width: 120px;
+}
+/* チェックボックスは入れ物ごと押せるようにする（13px の四角を狙わせない）。 */
+.app.layout-ops .overview-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+}
+.app.layout-ops .overview-controls input[type='checkbox'] {
+  width: 24px;
+  height: 24px;
+}
 /* 接続中は上部帯が長くなり、768px では E-stop が 2 行目に折り返す。
    折り返しても右端（利き手の親指の位置）から動かないようにする。 */
 .app.layout-ops .topbar .estop { margin-left: auto; }
