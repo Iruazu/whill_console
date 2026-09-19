@@ -134,8 +134,8 @@ Nav2 は mock / sim と同じ形で起動する。`generate_nav2_params --check`
 
 | 段 | 消える項目（B 節の番号） | 準備（実機なしで書ける） |
 |---|---|---|
-| 0 | 1 モックの値レンジ、2 実機 `/scan` の QoS・レート、10 テレメトリのフィールド名、12 `/imu/temperature` の有無、13 温度・電力のレンジ | `whill tap --stream telemetry` を一定時間記録し、min/max と欠損を出すスクリプト |
-| 1 | 7 E-STOP 解除後の復帰、8 `manual_zero_hold` と twist_mux のタイムアウト | E-STOP からゼロまで、ハートビート断からゼロまでを測るスクリプト（mock で先に動かす） |
+| 0 | 1 モックの値レンジ、2 実機 `/scan` の QoS・レート、10 テレメトリのフィールド名、12 `/imu/temperature` の有無、13 温度・電力のレンジ | **できた**: `whill measure telemetry`（#78） |
+| 1 | 7 E-STOP 解除後の復帰、8 `manual_zero_hold` と twist_mux のタイムアウト | **できた**: `whill measure stop`（#78。mock の基準線あり） |
 | 2 | 4 Wi-Fi 越しの遅延と `manual_heartbeat_timeout` | `whill latency` をそのまま使う |
 | 3 | 5 走行中のスライダー、6 反映 200 ms の再測定、9 仮想障害物の回避、18 tf の閾値 | `whill latency --repeats`、tf の記録（#51 の tap 出力） |
 | 4 | 11 `yaw_rate_vs_ndt` の閾値、15 ops のボタン、16 iPad Chrome / mDNS、17 D435 の帯域、20 テザリングの通信量、21 カメラのパラメータ、22 ops の視認性 | 帯域の測定スクリプト（#70 で書いたもの）、屋外の記録手順 |

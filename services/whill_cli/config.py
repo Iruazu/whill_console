@@ -109,6 +109,61 @@ def declared_topics(robot_id: str, mode: str, *, include_camera: bool = False) -
     return sorted(set(topics))
 
 
+def declared_telemetry(robot_id: str, mode: str) -> dict[str, str]:
+    """そのモードで出るはずのテレメトリ項目 → ドライバ名。
+
+    `whill measure telemetry` が実物と突き合わせるのに使う。宣言が正
+    （`cr2-base.yaml`）で、食い違ったら**宣言か実装のどちらかが古い**。
+    """
+    base = base_config()
+    modes = base.get('modes') or {}
+    if mode not in modes:
+        raise ConfigError(f'未知のモード: {mode} (候補: {", ".join(sorted(modes))})')
+
+    drivers = list(modes[mode].get('drivers') or [])
+    declared: dict[str, str] = {}
+    for driver in drivers:
+        declaration = (base.get('drivers') or {}).get(driver) or {}
+        for entry in declaration.get('telemetry') or []:
+            declared[entry['name']] = driver
+    # 派生テレメトリは単一のドライバに属さない。モードに関係なく出る。
+    for entry in base.get('derived_telemetry') or []:
+        declared[entry['name']] = 'derived'
+    return declared
+
+
+def derived_without_inputs(mode: str) -> set[str]:
+    """そのモードでは入力が出ないので、値が出なくて当然の派生テレメトリ。
+
+    `derived_telemetry.inputs` のトピックが、そのモードのドライバ宣言に
+    無ければ計算しようがない（mock には scan-to-map localizer が居ないので
+    `/pcl_pose` が出ず、`yaw_rate_vs_ndt` は出ない）。**故障と区別する。**
+    """
+    base = base_config()
+    available = set(declared_topics_for_mode(mode))
+    out = set()
+    for entry in base.get('derived_telemetry') or []:
+        inputs = set(entry.get('inputs') or [])
+        if inputs - available:
+            out.add(entry['name'])
+    return out
+
+
+def declared_topics_for_mode(mode: str) -> list[str]:
+    """そのモードで出るはずのトピック（`declared_topics` の robot 非依存版）。"""
+    return declared_topics('cr2-01', mode)
+
+
+def command_topic() -> str:
+    """実ドライバが受ける速度指令のトピック。`cr2-base.yaml` の subscribes が正。"""
+    base = base_config()
+    subscribes = ((base.get('drivers') or {}).get('whill_serial') or {}).get('subscribes') or []
+    for entry in subscribes:
+        if entry.get('type', '').endswith('Twist'):
+            return entry['topic']
+    raise ConfigError('cr2-base.yaml の whill_serial.subscribes に Twist の宣言が無い')
+
+
 def registry_module():
     """whill_params が import できるならそれを返す。できなければ None。
 

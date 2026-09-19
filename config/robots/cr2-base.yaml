@@ -164,6 +164,11 @@ modes:
   real:
     description: 実機ドライバ + 既存 Nav2 スタック
     drivers: [whill_serial, velodyne, rt_9axis]
+    # ドライバ以外が出すトピック。scan-to-map localizer（既存スタック）の出力で、
+    # Nav2 の map -> odom と派生テレメトリ yaw_rate_vs_ndt の入力。
+    # 宣言しておくと whill doctor が確認し、mock との違い（mock には localizer が
+    # 居ない）が機械的に分かる。
+    publishes: [/pcl_pose]
     include_stack: true
     use_sim_time: false
   sim:
