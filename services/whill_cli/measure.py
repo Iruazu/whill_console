@@ -128,7 +128,7 @@ def telemetry_markdown(stats: dict[str, ItemStats], seconds: float,
                        diff: dict[str, list[str]]) -> str:
     """`docs/measurements/` にそのまま貼れる形。"""
     lines = [
-        f'| 項目 | ドライバ | 単位 | 受信 | 実測 Hz | 最小 | 中央 | 最大 | 値なし | level |',
+        '| 項目 | ドライバ | 単位 | 受信 | 実測 Hz | 最小 | 中央 | 最大 | 値なし | level |',
         '|---|---|---|---|---|---|---|---|---|---|',
     ]
     for name in sorted(stats):
@@ -155,7 +155,7 @@ def telemetry_markdown(stats: dict[str, ItemStats], seconds: float,
         notes.append(f'- 宣言に無いのに来た: {", ".join(diff["undeclared"])}')
     if not any(diff[key] for key in ('never_arrived', 'no_value', 'undeclared')):
         notes.append('- 宣言と実物の食い違いなし')
-    return '\n'.join(lines + [''] + notes)
+    return '\n'.join([*lines, '', *notes])
 
 
 async def record_telemetry(url: str, token: str, *, seconds: float) -> list[dict[str, Any]]:
