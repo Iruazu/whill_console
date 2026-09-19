@@ -11,7 +11,7 @@
 | # | 内容 | 状況 |
 |---|---|---|
 | Q2 | **cr2-02 / cr2-03 の実機はいつ来るか。** 個体 yaml は cr2-01 のコピーで、TF は全て `measured: false`、シリアルポートと LiDAR IP は仮値。 | 未定。実車到着まで cr2-01 のみで開発する。 |
-| Q3 | **既存 `whill_lab0_ros2` の扱い。** 当面は launch から include する方針だが、Layer D と配車 UI をいつ `whill_platform` へ移植するか。 | 仮決め: Phase 2 は include、移植は実機復帰後。 |
+| Q3 | **既存 `whill_lab0_ros2` の扱い。** 当面は launch から include する方針だが、Layer D と配車 UI をいつ `whill_platform` へ移植するか。 | 仮決め: Phase 2 は include、移植は実機復帰後。**Phase 7 でもやらない**と決めた（`docs/phase7-plan.md` D3）。実機で動く配線を変えながら実機検証をすると、失敗の原因が切り分けられない。移植は実機検証が一巡してから。 |
 
 ## B. 実機でしか検証できないもの（実装は進める、Done にしない）
 
