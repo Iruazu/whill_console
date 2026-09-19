@@ -46,7 +46,7 @@
 | # | 内容 | 対応 |
 |---|---|---|
 | K1 | **`whill_lab0_ros2/install` に旧 `whill_bringup` が残っている。** src からは既に消えているが install ツリーには居座っており、source 順によっては本リポの `whill_bringup` を隠す。 | `scripts/env.sh` が既存スタック → 本リポの順に source して回避済み。恒久対応は既存リポ側で `install/` を作り直すこと。 |
-| K2 | **CycloneDDS の設定が `enx00e04c6808dc`（USB-Ethernet アダプタ）を指しており、未接続時に `lo` へ落ちて multicast が無効になる。** mock では動くが、gateway を他PC から繋ぐ Phase 2 で問題になる可能性がある。 | Phase 2 で `config/cyclonedds-runtime.xml` を本リポに持ち、開発時（アダプタ無し）と実機時で切り替える。 |
+| K2 | **CycloneDDS の設定を既存リポのファイルに頼っていた。** `scripts/env.sh` が `~/whill_lab0_ros2/configs/cyclonedds-runtime.xml` にフォールバックしており、そこに書かれた USB-Ethernet の名前は 2026-07-31 のドック交換で古くなっていた（あちらの `runtime-min.xml` が新しい）。 | **解決（2026-09-19）。** `config/cyclonedds-runtime.xml` を本リポに持ち、既定は lo だけ（設計原則 1）。NIC を足すときは `WHILL_DDS_INTERFACE` で渡す（名前を焼き込まない）。**4 構成を測って差が無いことを確認した上での移管**で、性能のための変更ではない（`docs/measurements/2026-09-19-dds-config.md`）。測定中に「設定を変えたら `ros2 daemon stop` が要る」（さもないと CLI が嘘をつく）ことも分かり、runbook に書いた。 |
 | K3 | **ROS を source した shell では pytest が ROS 製プラグインを自動 load して落ちる**（`launch_pytest` → `lark` 不在）。ini の `-p no:` は load 後に読まれるので効かない。 | `scripts/test.sh` と CI の `ros` ジョブが `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` を export する。直接 pytest を叩くときも同じ変数が要る。 |
 | K4 | **Playwright の WebKit を入れるには `sudo` が要る**（`playwright install --with-deps`）。 | ops-tablet プロジェクトは Chromium を 768px で使う。見たいのはレイアウトでありエンジン差ではない。実機 tablet の確認は B の実機検証待ちに計上。 |
 | K6 | **`python3-websockets`（apt の 9.1）は Python 3.10 で動かない。** `asyncio.Lock(loop=...)` が 3.10 で削除された引数を渡す。サーバは待ち受けまで成功して**接続が来た瞬間に落ちる**ので、「起動ログは正常なのに誰も繋がらない」という気づきにくい壊れ方をする。 | aiohttp を使う（ADR-0003）。`python3-websockets` は**入れないこと**。 |

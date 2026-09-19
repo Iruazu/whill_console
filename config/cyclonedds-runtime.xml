@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CycloneDDS の実行時設定（本リポの単一ソース。K2）。
+
+  Why:
+    以前は既存リポ（~/whill_lab0_ros2/configs/cyclonedds-runtime.xml）の
+    ファイルにフォールバックしていた。こちらで管理していないファイルに挙動が
+    依存し、しかもそこに書かれた USB-Ethernet の名前（enx00e04c6808dc）は
+    2026-07-31 のドック交換で変わっていた（あちらの runtime-min.xml が新しい）。
+
+  方針（許可列挙）:
+    - 列挙した NIC だけを DDS が使う。列挙しなければ自動的に除外される。
+      新しい NIC（Wi-Fi、テザリング、Docker bridge）が増えても勝手に使わない
+    - 既定は lo だけ。**設計原則 1「ROS は実機PC内に閉じる」**とはこの形。
+      外部との口は gateway の WebSocket と ssh（例外は stackd）
+    - 実機で LiDAR の有線 NIC も DDS に使う必要が出たときは、
+      WHILL_DDS_INTERFACE に名前を入れて起動する:
+        WHILL_DDS_INTERFACE=enx00e04c680ec9 whill run ...
+      ドックやアダプタを替えると名前が変わる（MAC 由来）。**ここに焼き込まない**
+
+  やらないこと（既存リポが一度入れて外したもの）:
+    - AllowMulticast の上書き（既定の spdp のまま）
+    - DontRoute=true。あちらの記録では unicast の data path を塞いでいた
+
+  注意:
+    CYCLONEDDS_URI はプロセス起動時に読まれる。設定を変えたら
+    `ros2 daemon stop` をすること（daemon が古い設定のまま残り、
+    ros2 topic list や whill doctor が「見えない」と嘘をつく — 実測で踏んだ）。
+-->
+<CycloneDDS xmlns="https://cdds.io/config"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
+  <Domain id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface name="lo"/>
+        <!-- 未設定なら存在しない名前に展開され、optional なので無視される。
+             空文字に展開されると Cyclone がドメイン生成ごと失敗するので、
+             既定値は必ず「存在しない名前」にすること（実測で確認）。 -->
+        <NetworkInterface name="${WHILL_DDS_INTERFACE:-whill-no-nic}" presence_required="false"/>
+      </Interfaces>
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <!-- 本リポの mock 構成でノードは 29 個。既定の 9 では足りない。 -->
+      <MaxAutoParticipantIndex>100</MaxAutoParticipantIndex>
+    </Discovery>
+  </Domain>
+</CycloneDDS>

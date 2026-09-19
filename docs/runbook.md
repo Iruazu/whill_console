@@ -145,6 +145,33 @@ whill doctor --robot cr2-01 --mode sim     # 5 件（odom / 点群 / scan / imu 
 - `WHILL_SIM_GPU=off` を付けて起動すると GPU を使わない（CPU の LiDAR。切り分け用）
 - `nvidia-smi` が `Driver/library version mismatch` を出すときは、ドライバ更新後に再起動していない。再起動する
 
+## DDS の設定（CycloneDDS）
+
+`scripts/env.sh` が `config/cyclonedds-runtime.xml` を指す（K2。以前は既存リポの
+ファイルを使っていた）。**既定は loopback だけ**を使う。ROS は実機PC内で閉じる
+（設計原則 1）ので、これで足りる。
+
+```bash
+# いま何を使っているか
+echo $CYCLONEDDS_URI
+
+# 実際に選ばれた NIC を見る（config の行を足して起動する）
+CYCLONEDDS_URI="$CYCLONEDDS_URI,<Tracing><Verbosity>config</Verbosity><OutputFile>stderr</OutputFile></Tracing>"   ros2 topic list 2>&1 | grep "selected interfaces"
+```
+
+- **LiDAR の有線 NIC も DDS に使うとき**は名前を渡す（MAC 由来なので、ドックや
+  アダプタを替えると変わる。設定ファイルに焼き込まない）:
+
+  ```bash
+  export WHILL_DDS_INTERFACE=enx00e04c680ec9     # ip -brief link show で確認
+  ```
+
+- **設定を変えたら `ros2 daemon stop`。** daemon はドメインごとに常駐し、古い設定の
+  まま残る。`ros2 topic list` や `whill doctor` が「トピックが見えない」と嘘をつく
+  （実測で踏んだ。`docs/measurements/2026-09-19-dds-config.md`）
+- 手元の単体構成では、設定を変えても discovery も大きなメッセージも差が出なかった。
+  効いてくるのは実機側（Wi-Fi・テザリングの NIC 併存、実 LiDAR）
+
 ## stackd（他PC から起動・停止する）
 
 実機PC に ssh せずにスタックを操作するための常駐サービス。
@@ -549,6 +576,8 @@ skip の理由がログに出る（全部 skip されて緑、を見逃さない
 | sim が `廊下の地図が無い` で落ちる | `python3 scripts/make_mock_map.py` のあと `whill_bringup` をビルドし直す。 |
 | sim の上部帯が「Nav2 応答なし」のまま、tf パネルが `odom -> base_link が来ていない` | 車体が投入されていない。起動ログで `spawn_entity` のエラーを見る。`No module named 'lxml'` なら古い `whill`（venv の python3 を ROS に渡していた。直した）。 |
 | sim の LiDAR が `CPU` と出る | `DISPLAY` が無い（ssh 越しなど）か、NVIDIA のモジュールが載っていない。`nvidia-smi` を見る。 |
+| `ros2 topic list` や `whill doctor` にトピックが出ないのに、実際は publish されている | ROS 2 の daemon が古い設定のまま残っている。`ros2 daemon stop`（K2）。 |
+| `rmw_create_node: failed to create domain` | CycloneDDS の設定で NIC 名が空か、同じ名前が 2 回並んでいる。`WHILL_DDS_INTERFACE` を確認する。 |
 | sim を 2 つ同時に起動すると片方が動かない | Gazebo の master のポート（11345）が衝突する。`GAZEBO_MASTER_URI=http://127.0.0.1:11346` のように変える。 |
 | 上部帯に「Nav2 応答なし」と出る | Nav2 が上がっているはずなのに `lifecycle_manager_navigation/is_active` が答えない。`ros2 node list` で Nav2 のノードが居るか見る。replay なら「起動しない」と出るのが正常（#67）。 |
 | tf パネルが「map → odom が止まっている」 | localizer（実機は scan-to-map、mock は static）が止まっている。bag 再生を一時停止したときも出る（正常）。走行中なら Nav2 が abort する前触れ。 |
