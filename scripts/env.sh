@@ -27,8 +27,12 @@ export CYCLONEDDS_URI="file://${WHILL_PLATFORM_ROOT}/config/cyclonedds-runtime.x
 # https・wss で待ち受け、CLI は wss で繋ぐ。iPad から開くのに要る。
 # 平文で動かしたいときだけ WHILL_TLS=off を付けて source する。
 _whill_tls_dir="${WHILL_TLS_DIR:-${HOME}/.config/whill/tls}"
-if [ "${WHILL_TLS:-on}" != "off" ] && [ -f "${_whill_tls_dir}/server.crt" ] \
-    && [ -f "${_whill_tls_dir}/server.key" ]; then
+if [ "${WHILL_TLS:-on}" = "off" ]; then
+  # **既に入っている値を消す。** 同じシェルで先に（off 無しで）source していると、
+  # 変数が残ったままになり「平文で上げたはずの gateway が wss で待ち受ける」。
+  # live テスト（ブラウザは ws:// で繋ぐ）で実際に踏んだ。
+  unset WHILL_TLS_CERT WHILL_TLS_KEY WHILL_TLS_CA
+elif [ -f "${_whill_tls_dir}/server.crt" ] && [ -f "${_whill_tls_dir}/server.key" ]; then
   export WHILL_TLS_CERT="${_whill_tls_dir}/server.crt"
   export WHILL_TLS_KEY="${_whill_tls_dir}/server.key"
   export WHILL_TLS_CA="${_whill_tls_dir}/ca.crt"

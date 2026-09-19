@@ -25,14 +25,27 @@ test('行き先を押すと車体が動き出し、取り消しで止まる', as
     (await page.evaluate(() => (window as any).__whill.pose)) as { x: number }
   const phase = () => page.getByTestId('dispatch-phase')
 
-  // **先に止める。** 前回の実行が残した job が走っていると、こちらの
-  // 投入は FIFO の後ろに並ぶだけ（`whill_dispatch` は preempt しない）。
-  // 「走行中」の表示は前の job のもので、車体は別の方向へ進んでいく。
-  if (await phase().textContent() === '走行中') {
-    await page.getByTestId('dispatch-cancel').click()
-    await expect(phase()).not.toHaveText('走行中', { timeout: 15000 })
-    await page.waitForTimeout(2000)   // 減速しきるまで
+  // **先に止める。** 前に走った job が残っていると、こちらの投入は FIFO の
+  // 後ろに並ぶだけ（`whill_dispatch` は preempt しない）。「走行中」の表示は
+  // 前の job のもので、車体は別の方向へ進んでいく。
+  //
+  // 走行中だけでなく**待機中でない状態すべて**で止める。テストの順序に
+  // 依存させないため（E-stop のテストの後に走ると、goal が取り消された
+  // 直後の状態から始まる。順序で落ちるテストは、そのうち誰も信じなくなる）。
+  // 走っていない状態（待機中と、前の job の結末）なら投入してよい。
+  const RUNNING = new Set(['走行中', '順番待ち'])
+  const settled = async () => {
+    for (let i = 0; i < 20; i += 1) {
+      const text = (await phase().textContent())?.trim() ?? ''
+      if (!RUNNING.has(text)) return
+      const cancel = page.getByTestId('dispatch-cancel')
+      if (await cancel.isEnabled()) await cancel.click()
+      await page.waitForTimeout(1000)
+    }
+    throw new Error('前の配車が止まらない')
   }
+  await settled()
+  await page.waitForTimeout(2000)   // 減速しきるまで
 
   const start = await pose()
 
