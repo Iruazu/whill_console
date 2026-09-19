@@ -14,15 +14,14 @@ export WHILL_PLATFORM_CONFIG="${WHILL_PLATFORM_ROOT}/config"
 # 既存リポで実証済みなので、ここは選択の余地なく cyclonedds に固定する。
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 
-# CycloneDDS の設定。bag 録画時だけそのターミナル限定で差し替える運用は
-# 既存リポ (configs/cyclonedds-bag-record.xml) を踏襲する。
-if [ -f "${WHILL_PLATFORM_ROOT}/config/cyclonedds-runtime.xml" ]; then
-  export CYCLONEDDS_URI="file://${WHILL_PLATFORM_ROOT}/config/cyclonedds-runtime.xml"
-elif [ -f "${HOME}/whill_lab0_ros2/configs/cyclonedds-runtime.xml" ]; then
-  # 移行期は既存リポの設定をそのまま使う。whill_platform 側に持ってくるのは
-  # 実機復帰後（設定が本当に同一かを実機で確認してから）。
-  export CYCLONEDDS_URI="file://${HOME}/whill_lab0_ros2/configs/cyclonedds-runtime.xml"
-fi
+# CycloneDDS の設定。**本リポのものを使う**（K2）。以前は既存リポのファイルに
+# フォールバックしていたが、こちらで管理していないファイルに挙動が依存し、
+# 中の NIC 名も古くなっていた。中身の方針は config/cyclonedds-runtime.xml。
+#
+# 実機で LiDAR の有線 NIC も DDS に使うときは、起動前に名前を入れる:
+#   export WHILL_DDS_INTERFACE=enx00e04c680ec9
+# 設定を変えたら `ros2 daemon stop`（daemon が古い設定のまま残る）。
+export CYCLONEDDS_URI="file://${WHILL_PLATFORM_ROOT}/config/cyclonedds-runtime.xml"
 
 # 研究室 CA の証明書（#55）。発行済みなら gateway / stackd / 開発サーバは
 # https・wss で待ち受け、CLI は wss で繋ぐ。iPad から開くのに要る。
