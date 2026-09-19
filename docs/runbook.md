@@ -92,6 +92,9 @@ whill run --robot cr2-01 --mode replay --gateway --bag bags/2026-07-31-campus
 # Gazebo のシミュレーション（下の「sim」を先に読むこと）
 whill run --robot cr2-01 --mode sim --gateway
 
+# 実機（**実機で起動したことがない。docs/phase7-checklist.md の段 0 を見ながら**）
+whill run --robot cr2-01 --mode real --gateway
+
 # 起動せずコマンドだけ見る
 whill run --robot cr2-01 --mode mock --dry-run
 ```
@@ -596,7 +599,8 @@ mock での基準線: E-STOP 中央 30 ms、ハートビート断 430 ms
 | replay で gateway は動いているのにテレメトリが 1 通も届かない | costmap が大きすぎてブラウザの受信上限を超えている可能性。`whill tap -v` で `1/N に間引き` が出るか見る。`costmap_max_cells` を下げる。 |
 | 俯瞰図の地図が粗い | 大きい地図は間引いて送っている。倍率は俯瞰図の右上に出る。細かいところは local costmap で見る（間引かれない）。 |
 | gateway が `address already in use` で落ちる | 前回のプロセスが残っている。`ss -ltnp \| grep 8765` で PID を見て落とす。 |
-| `mode=real` で例外が出る | 未配線。仕様どおり（黙って起動しないより落とす）。`docs/open-questions.md` K5。 |
+| `mode=real` が `既存スタックが見つからない` で落ちる | 既存リポを source していない。`scripts/env.sh` を使う。 |
+| `mode=real` が `occupancy が見つからない` で落ちる | 個体 yaml の `maps.<default>.occupancy` が実在しない。既存リポのパスを確認する（以前 1 階層ずれていた）。 |
 | sim が `廊下の地図が無い` で落ちる | `python3 scripts/make_mock_map.py` のあと `whill_bringup` をビルドし直す。 |
 | sim の上部帯が「Nav2 応答なし」のまま、tf パネルが `odom -> base_link が来ていない` | 車体が投入されていない。起動ログで `spawn_entity` のエラーを見る。`No module named 'lxml'` なら古い `whill`（venv の python3 を ROS に渡していた。直した）。 |
 | sim の LiDAR が `CPU` と出る | `DISPLAY` が無い（ssh 越しなど）か、NVIDIA のモジュールが載っていない。`nvidia-smi` を見る。 |

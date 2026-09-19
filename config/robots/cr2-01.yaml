@@ -82,7 +82,14 @@ maps:
   default: campus_v2
   campus_v2:
     source_repo: ~/whill_lab0_ros2
-    occupancy: docs/maps/campus/v2/occupancy_v2.yaml
+    # 既存スタックの localizer に渡す site 名（あちらの nav_launch / m6r_bringup の
+    # `site:=` と同じもの）。**地図のパスから推測しない。**
+    site: campus
+    # 実在するパスであることは tests/services/test_maps.py が確かめる。
+    # 以前は docs/maps/campus/v2/occupancy_v2.yaml と 1 階層ずれていた。
+    # 既存リポの runbook は「map_variant:=v2 は必須」（旧 occupancy.yaml には
+    # 焼き込みの残りがある）なので、v2 を使う。
+    occupancy: docs/maps/campus/occupancy_v2.yaml
     # 配車の名前付き地点。occupancy と同じ map frame の座標系。
     # パスから site を推測せず明示するのは、地図を差し替えたときに
     # 地点だけ古いまま残るのを防ぐため。
