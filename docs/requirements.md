@@ -299,6 +299,19 @@ Gazebo Classic 11 で `whill run --mode sim --gateway` が起動し、配車で�
 - gazebo_ros の `/clock` は既定 10 Hz。use_sim_time のノードから見た時刻が 0.1 s 刻みに
   なるので 100 Hz に上げた
 
+### Phase 7 — 実機に戻る
+
+計画は `docs/phase7-plan.md`（2026-09-19）。要点:
+
+- **`mode=real` は既存スタックを include する。ただし Nav2 だけは本リポが起動する。**
+  既存の `nav_launch.py` は params ファイルを受け取れないので、include すると
+  registry が効かず、画面のスライダーと実際の値が食い違う（設計原則 3）
+- **安全から始める。** 車輪を浮かせて「止まること」（E-STOP、ハートビート断、Wi-Fi 断）を
+  確認してから接地する。E-STOP が効かなければ以降を中止する
+- 実機検証待ち 20 件（open-questions B 節）を、どの段で消すかまで割り当ててある
+- Layer D と配車の移植（Q3）は Phase 7 ではやらない。**実機で動く配線を変えながら
+  実機検証をすると、失敗の原因が切り分けられない**
+
 ## 5. 作業規約
 
 `CLAUDE.md` の「作業規約」が正。要点:
