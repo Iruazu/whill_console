@@ -107,6 +107,25 @@ def _nav2_params(robot_id: str, preset: str, use_sim_time: bool) -> str:
     return handle.name
 
 
+def _map_entry(robot: dict) -> dict:
+    """個体 yaml の `maps.<default>`。実機の地図と site 名の単一ソース。"""
+    maps = robot.get('maps') or {}
+    entry = maps.get(maps.get('default'))
+    if not isinstance(entry, dict):
+        raise RuntimeError('個体 yaml の maps.<default> が見つからない')
+    return entry
+
+
+def _existing_repo_path(entry: dict, key: str) -> Path:
+    path = (Path(entry.get('source_repo', '~/whill_lab0_ros2')).expanduser()
+            / entry[key])
+    if not path.is_file():
+        # 黙って進むと map_server が空の地図で上がり、Nav2 が経路を引けない理由が
+        # 分からなくなる。パスを言って落とす。
+        raise RuntimeError(f'{key} が見つからない: {path}')
+    return path
+
+
 def _waypoints_path(mode: str, robot: dict) -> str:
     """配車地点の yaml。
 
@@ -122,20 +141,9 @@ def _waypoints_path(mode: str, robot: dict) -> str:
             get_package_share_directory('whill_bringup'),
             'config', 'mock_waypoints.yaml')
 
-    maps = robot.get('maps') or {}
-    entry = maps.get(maps.get('default')) or {}
-    relative = entry.get('waypoints')
-    if not relative:
-        raise RuntimeError(
-            '個体 yaml の maps.<default>.waypoints が無い。配車地点のパスを'
-            '設定から引けない（ノード内にハードコードしないこと）')
-    yaml_path = (Path(entry.get('source_repo', '~/whill_lab0_ros2')).expanduser()
-                 / relative)
-    if not yaml_path.is_file():
-        # 空のまま起動すると「地点が 1 つも出ない配車パネル」になり、
-        # 原因が分かりにくい。ここで止めてパスを言う。
-        raise RuntimeError(f'配車地点が見つからない: {yaml_path}')
-    return str(yaml_path)
+    # 見つからなければ例外。空のまま起動すると「地点が 1 つも出ない配車パネル」
+    # になり、原因が分かりにくい。
+    return str(_existing_repo_path(_map_entry(robot), 'waypoints'))
 
 
 def _repo_root() -> Path:
@@ -242,6 +250,54 @@ def _sim_actions(robot: dict, base: dict, use_sim_time: bool) -> list:
     return actions
 
 
+def _real_actions(robot: dict, use_camera: str) -> list:
+    """実機のドライバ層（K5 / #77）。**既存スタックを include する。**
+
+    含まれるもの（`m6r_bringup_launch.py`）:
+      センサ（VLP-16 / IMU / 任意で D435）、実ドライバ、static TF、EKF、
+      scan-to-map localizer、failsafe_node、twist_mux。
+
+    **本リポはこれらを自分で起動しない。** static TF も twist_mux も EKF も
+    あちらが出す。二重に出すと TF が二重になり、twist_mux は優先度の異なる
+    2 つが同じスロットに書く。
+
+    `whill_navigation/nav_launch.py` は include しない。あれは Nav2 一式を
+    あちらの params で起動するもので、params ファイルを受け取る引数が無い
+    （`site` / `map_variant` / `speed` のみ）。include すると本リポの registry が
+    効かず、画面のスライダーと実際の値が食い違う（設計原則 3）。
+    代わりに、あの launch が組む鎖のうち**本リポに無い地面除去だけを借りる**。
+    """
+    entry = _map_entry(robot)
+    site = entry['site']
+    # 地図は Nav2 の map_server に渡す。実在しなければここで落ちる。
+    _existing_repo_path(entry, 'occupancy')
+
+    actions = [IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(
+            _require_existing_stack('whill_safety'), 'launch', 'm6r_bringup_launch.py')),
+        launch_arguments={'site': site, 'use_sim_time': 'false',
+                          'realsense': use_camera}.items(),
+    )]
+
+    # 地面除去。実機の /scan はこれを通した点群から作る（傾いた LiDAR が
+    # 路面を障害物として拾わないように）。sim では床が平らなので通していない。
+    actions.append(IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(
+            _require_existing_stack('whill_perception'),
+            'launch', 'ground_removal_launch.py')),
+    ))
+
+    p2ls = os.path.join(_require_existing_stack('whill_navigation'),
+                        'config', 'pointcloud_to_laserscan.yaml')
+    actions.append(Node(
+        package='pointcloud_to_laserscan', executable='pointcloud_to_laserscan_node',
+        name='pointcloud_to_laserscan', output='screen',
+        parameters=[p2ls, {'use_sim_time': False}],
+        # 実機は地面除去のあとの点群。sim は生の点群（sim/README 参照）。
+        remappings=[('cloud_in', '/velodyne_points_no_ground'), ('scan', '/scan')]))
+    return actions
+
+
 def _static_tf_nodes(robot: dict, use_sim_time: bool) -> list:
     """個体 yaml の tf_static をそのまま static_transform_publisher にする。
 
@@ -310,18 +366,19 @@ def _setup(context, *args, **kwargs):
             cmd=['ros2', 'bag', 'play', str(bag_path), '--clock'],
             output='screen'))
     elif mode == 'real':
-        # 実機ドライバの include は実機復帰後に配線する。ここで黙って
-        # 何も起動しないと「実機モードで動いたつもり」になるので明示的に落とす。
-        raise RuntimeError(
-            'mode=real はまだ配線していない（実機が手元にないため検証できない）。'
-            'docs/open-questions.md の実機検証待ちリストを参照')
+        # **実機では起動確認をしていない**（実機が手元にない）。配線の形だけを
+        # 決めてある。実機で最初に確かめる手順は docs/phase7-checklist.md の段 0。
+        actions.extend(_real_actions(robot, use_camera))
     elif mode == 'sim':
         actions.extend(_sim_actions(robot, base, use_sim_time))
 
     # ---- TF ----------------------------------------------------------------
     # replay では出さない。bag に /tf_static が入っているので、こちらからも
     # 出すと二重になる（ADR-0004）。
-    if mode != 'replay':
+    # real でも出さない。既存スタックの sensors_launch が static_tf_launch を
+    # 含んでおり、同じ辺を 2 つの publisher が出すことになる（#77）。
+    # 個体 yaml の tf_static は**あちらの写し**で、一致はテストが担保する（#72）。
+    if mode in ('mock', 'sim'):
         actions.extend(_static_tf_nodes(robot, use_sim_time))
 
     if mode in ('mock', 'sim'):
@@ -348,8 +405,13 @@ def _setup(context, *args, **kwargs):
         ))
 
     # ---- 地図 --------------------------------------------------------------
-    map_yaml = (_corridor_map_yaml(required=(mode == 'sim'))
-                if mode in ('mock', 'sim') else None)
+    if mode in ('mock', 'sim'):
+        map_yaml = _corridor_map_yaml(required=(mode == 'sim'))
+    elif mode == 'real':
+        # 実機の地図は個体 yaml が正（既存リポからの相対パス）。
+        map_yaml = str(_existing_repo_path(_map_entry(robot), 'occupancy'))
+    else:
+        map_yaml = None
     if map_yaml is not None:
         actions.append(Node(
             package='nav2_map_server', executable='map_server', name='map_server',

@@ -159,12 +159,17 @@ def test_plan_covers_every_hardware_item():
         f'B 節は {len(items)} 件だが、計画は {match.group(1)} 件のつもりでいる')
 
 
-def test_real_mode_is_still_unwired():
-    """計画が前提にしている状態（mode=real は未配線）が変わっていないこと。"""
+def test_real_mode_is_wired_but_marked_unverified():
+    """配線しても「実機で動いたつもり」にしない（#77）。
+
+    計画と launch の両方に「実機では起動していない」と書いてあること。
+    実機で起動したら、両方を書き換える。
+    """
     launch = (ROOT / 'ros' / 'src' / 'whill_bringup' / 'launch' /
               'bringup_launch.py').read_text('utf-8')
-    assert 'mode=real はまだ配線していない' in launch, \
-        'mode=real を配線したなら、Phase 7 の計画（§3）を書き換えること'
+    assert 'mode=real はまだ配線していない' not in launch
+    assert '実機では起動確認をしていない' in launch
+    assert '実機では起動していない' in PLAN.read_text('utf-8')
 
 
 def test_modes_the_plan_talks_about_exist():

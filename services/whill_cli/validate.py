@@ -329,7 +329,29 @@ ROBOT_SCHEMA: dict[str, Any] = {
             },
         },
         'param_overrides': {'type': 'object'},
-        'maps': {'type': 'object'},
+        # 地図は個体ごと。`default` が指す名前の中身は、既存リポからの相対パスと
+        # localizer に渡す site 名（K5 / #77）。
+        'maps': {
+            'type': 'object',
+            'required': ['default'],
+            'properties': {'default': {'type': 'string', 'minLength': 1}},
+            'additionalProperties': {
+                'anyOf': [
+                    {'type': 'string'},          # default: <名前>
+                    {
+                        'type': 'object',
+                        'required': ['source_repo', 'site', 'occupancy', 'waypoints'],
+                        'additionalProperties': False,
+                        'properties': {
+                            'source_repo': {'type': 'string', 'minLength': 1},
+                            'site': {'type': 'string', 'minLength': 1},
+                            'occupancy': {'type': 'string', 'minLength': 1},
+                            'waypoints': {'type': 'string', 'minLength': 1},
+                        },
+                    },
+                ],
+            },
+        },
     },
 }
 

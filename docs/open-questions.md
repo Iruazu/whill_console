@@ -57,7 +57,7 @@
 | K12 | **gateway の配信タイマーは宣言より 1 割ほど速い。** 実測で `status` が 1.0 Hz 宣言に対し 1.14 Hz、`telemetry` が 6.0 Hz 宣言に対し 6.72 Hz。`ClockType.SYSTEM_TIME` の時計を渡した rclpy タイマーを別スレッドの `SingleThreadedExecutor` で回している構成の性質で、Phase 2 から続いている（今回の実装で持ち込んだものではない）。 | 上限レートは帯域を守るためのもので、1 割の超過で困る場面が無いため放置する。実機PC の CPU 負荷を測る段階（B 節）で問題になったら、タイマーではなく `RateLimiter` 方式（テレメトリの間引きと同じ）に寄せること。 |
 | K11 | **bag を再生し終えても gateway は残り、次の `whill run` が port 8765 を取れずに落ちる。** gateway が死んでも launch 全体は生き続けるので、「スタックは動いているのにブラウザから何も繋がらない」状態になっていた。実測で、8765 番を塞いで起動すると 40 秒経っても Nav2・モック・dispatch_node が生き残った（`WHILL_GATEWAY_TOKEN` 未設定でも同じ）。 | **解決（#49）。** gateway ノードの `on_exit` で、launch の停止処理中でなければ例外を投げる（`whill_bringup/gateway_guard.py`）。launch は 5 秒以内に全体を止めて**終了コード 1** を返し、stackd は `failed` と理由を出す。`on_exit=Shutdown()` だけでは終了コードが 0 になり、stackd が「停止」と表示して原因が隠れたままだった（Humble の launch はイベント処理中の例外でしか非 0 を返さない）。通常の停止（1.8 s → 1.9 s）と、再生終了後に gateway が残る挙動（ADR-0004）は変わらない。 |
 | K13 | **`ros2 launch` のプロセスだけに SIGTERM を送ると、launch は即座に終わり子ノードが残る**（Humble、2026-09-14 実測。終了コード -15、gateway が port を握ったまま）。launch が子に転送するのは SIGINT だけ。 | 本リポの停止経路は影響を受けない: stackd はプロセスグループごと SIGINT → SIGTERM → SIGKILL を送り、systemd は `KillMode=control-group` で全プロセスに送る。どちらも gateway 自身に届き、gateway は SIGINT / SIGTERM で 0.1 s で終わる（#65）。**手で止めるときは Ctrl+C か `kill -INT`。launch の pid に素の `kill` をしないこと。** |
-| K5 | **`mode=real` は未配線。** 呼ぶと明示的に例外で落ちる。`mode=sim` は配線した（2026-09-16、Gazebo Classic 11。`docs/runbook.md` の「sim」）。 | 黙って何も起動しないより落ちるほうが安全（「実機モードで動いたつもり」を防ぐ）。real は実機復帰後。 |
+| K5 | **`mode=real` は実機で起動していない。** 配線は済んでいる（#77、2026-09-19。既存スタックを include し、Nav2 だけ本リポが起動する）が、実機が無いので起動したことが無い。`mode=sim` は配線・確認とも済み。 | 組み立てが通ること・既存スタックと二重起動しないことは `tests/ros/test_real_mode.py` が確かめる。**実機での最初の起動は `docs/phase7-checklist.md` の段 0**。 |
 
 ## D. 解決済み
 
