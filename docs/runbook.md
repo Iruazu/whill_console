@@ -542,6 +542,29 @@ CI は 3 ジョブに分かれる。壊れた場所が名前で分かるよう�
 skip の理由がログに出る（全部 skip されて緑、を見逃さないため）。
 テンプレートの場所は `WHILL_NAV2_TEMPLATE` で差し替えられる。
 
+## 実機で測る（Phase 7 の段 0〜2）
+
+計画は `docs/phase7-plan.md`。**当日に測り方を考えないための道具**（#78）。
+
+```bash
+# 段 0: テレメトリを記録して、宣言（cr2-base.yaml）との食い違いを名指しする
+whill measure telemetry --seconds 60 --mode real
+#   出力はそのまま docs/measurements/ に貼れる表
+#   「来ていない」= トピック名か publish、「値が無い」= フィールド名を疑う
+#   宣言と食い違えば終了コード 1
+
+# 段 1: 止まるまでの時間（**車輪を浮かせてから**）
+whill measure stop --repeats 5
+#   E-STOP とハートビート断の 2 通りで、指令がゼロになるまでを測る
+#   ゼロにならない回があれば終了コード 1 → **そこで中止する**
+
+# 段 2: 遅延（既存の道具をそのまま使う）
+whill latency --repeats 20
+```
+
+mock での基準線: E-STOP 中央 30 ms、ハートビート断 430 ms
+（`docs/measurements/2026-09-19-stop-time-mock.md`）。**実機の値ではない。**
+
 ## 落ちたとき
 
 | 症状 | 原因と対処 |

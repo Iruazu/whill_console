@@ -28,8 +28,11 @@ app = typer.Typer(
     help='whill_platform の開発・運用 CLI',
     no_args_is_help=True,
 )
+measure_app = typer.Typer(
+    help='実機で測る（Phase 7 の段 0〜2）。docs/phase7-plan.md', no_args_is_help=True)
 params_app = typer.Typer(help='パラメータ registry の参照', no_args_is_help=True)
 stack_app = typer.Typer(help='スタックの起動・停止 (stackd 経由)', no_args_is_help=True)
+app.add_typer(measure_app, name='measure')
 app.add_typer(params_app, name='params')
 app.add_typer(stack_app, name='stack')
 
@@ -517,6 +520,112 @@ def params_validate() -> None:
 
 
 # ---- 情報表示 ---------------------------------------------------------------
+
+
+# ---- measure ---------------------------------------------------------------
+
+
+@measure_app.command('telemetry')
+def measure_telemetry(
+    host: str = typer.Option('127.0.0.1', '--host'),
+    port: int = typer.Option(8765, '--port'),
+    seconds: float = typer.Option(30.0, '--seconds', '-s', help='何秒記録するか'),
+    robot: str = typer.Option('cr2-01', '--robot', '-r'),
+    mode: str = typer.Option('mock', '--mode', '-m', help='宣言の突き合わせに使う'),
+) -> None:
+    """テレメトリを記録し、宣言（cr2-base.yaml）との食い違いを名指しする。
+
+    Phase 7 の段 0。実機の値レンジで `warn` / `crit` を置き換えるための記録でもある。
+    出力は docs/measurements/ にそのまま貼れる表。
+    """
+    import asyncio
+
+    from whill_cli import measure
+    from whill_cli.tap import TapError
+
+    token = os.environ.get('WHILL_GATEWAY_TOKEN', '')
+    if not token:
+        console.print('[red]WHILL_GATEWAY_TOKEN が未設定[/red]')
+        raise typer.Exit(2)
+
+    url = f'{tls.scheme()}://{host}:{port}'
+    try:
+        frames = asyncio.run(measure.record_telemetry(url, token, seconds=seconds))
+    except TapError as exc:
+        console.print(f'[red]{exc}[/red]')
+        raise typer.Exit(2) from None
+
+    if not frames:
+        console.print('[red]telemetry が 1 通も来なかった[/red]'
+                      '（gateway が上がっているか、モードに telemetry 宣言があるか）')
+        raise typer.Exit(1)
+
+    stats = measure.collect_telemetry(frames)
+    declared = config.declared_telemetry(robot, mode)
+    diff = measure.compare_with_declaration(
+        stats, declared, config.derived_without_inputs(mode))
+    console.print(measure.telemetry_markdown(stats, seconds, diff))
+    # 食い違いは終了コードにも出す。目で見落としても CI や手順書で気づける。
+    if diff['never_arrived'] or diff['no_value']:
+        raise typer.Exit(1)
+
+
+@measure_app.command('stop')
+def measure_stop(
+    host: str = typer.Option('127.0.0.1', '--host'),
+    port: int = typer.Option(8765, '--port'),
+    repeats: int = typer.Option(5, '--repeats', '-n'),
+    vx: float = typer.Option(0.1, '--vx', help='動かす速度 [m/s]'),
+    timeout: float = typer.Option(5.0, '--timeout', help='ゼロを待つ上限 [s]'),
+    robot: str = typer.Option('cr2-01', '--robot', '-r'),
+) -> None:
+    """E-STOP とハートビート断で、指令がゼロになるまでを測る。
+
+    **車輪を浮かせた状態で使うこと。実際に車体が動く。**
+    Phase 7 の段 1。ここが通らなければ以降の段に進まない。
+    """
+    import asyncio
+
+    from whill_cli import measure
+
+    token = os.environ.get('WHILL_GATEWAY_TOKEN', '')
+    if not token:
+        console.print('[red]WHILL_GATEWAY_TOKEN が未設定[/red]')
+        raise typer.Exit(2)
+
+    topic = config.command_topic()
+    console.print(f'[yellow]車輪が浮いていることを確かめること。'
+                  f'{vx} m/s で動かして止める × {repeats} 回[/yellow]（指令: {topic}）')
+    url = f'{tls.scheme()}://{host}:{port}'
+    watcher = measure.CommandWatcher(topic, _ros_env())
+    runs = []
+    try:
+        for trigger in ('estop', 'heartbeat'):
+            for _ in range(repeats):
+                runs.append(asyncio.run(measure.measure_stop(
+                    url, token, watcher, trigger=trigger, vx=vx, timeout=timeout)))
+    except RuntimeError as exc:
+        console.print(f'[red]{exc}[/red]')
+        raise typer.Exit(2) from None
+    finally:
+        watcher.close()
+
+    table = Table(title=f'{topic} がゼロになるまで')
+    table.add_column('止め方')
+    table.add_column('回数')
+    table.add_column('中央値 (ms)')
+    table.add_column('最大 (ms)')
+    table.add_column('ゼロにならなかった回数')
+    summary = measure.summarize_stops(runs)
+    for trigger, values in summary.items():
+        failed = int(values['failed'])
+        table.add_row(trigger, str(int(values['n'])), f'{values["median_ms"]:.0f}',
+                      f'{values["max_ms"]:.0f}',
+                      f'[red]{failed}[/red]' if failed else '0')
+    console.print(table)
+    if any(int(v['failed']) for v in summary.values()):
+        console.print('[red]ゼロにならなかった回がある。ここが通らなければ先へ進まないこと[/red]')
+        raise typer.Exit(1)
 
 
 @app.command('robots')
