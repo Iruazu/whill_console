@@ -1,657 +1,310 @@
 # runbook
 
-資格情報は書かない。トークンやパスワードは環境変数で渡す。
+資格情報は書かない。トークンやパスワードは環境変数かファイルで渡す。
+実機で未確認の事項は `docs/open-questions.md` の B 節にある。
 
 ## 初回セットアップ
 
 ```bash
-# ツールチェーン (sudo 不要、~/.local へ入る)
+# uv（~/.local/bin）
 curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR="$HOME/.local/bin" sh
-# Node 22 は tarball を ~/.local/opt/node へ展開し、corepack で pnpm を有効化する
-#   (apt の nodejs 12 は Vite に古すぎる)
 
-# MCAP 再生と gateway に必要
+# Node 22 と pnpm（apt の nodejs 12 は Vite に古すぎる）
+mkdir -p ~/.local/opt ~/.local/bin
+[ -d ~/.local/opt/node ] || {
+  curl -fsSL https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.xz | tar -xJ -C ~/.local/opt
+  mv ~/.local/opt/node-v22.14.0-linux-x64 ~/.local/opt/node
+}
+ln -sf ../opt/node/bin/node ~/.local/bin/node
+~/.local/opt/node/bin/corepack enable --install-directory ~/.local/bin
+
+# MCAP 再生と gateway に必要。python3-websockets は入れない（ADR-0003）
 sudo apt-get install -y ros-humble-rosbag2-storage-mcap python3-aiohttp
-
-# python3-websockets は入れないこと。apt の 9.1 は Python 3.10 で壊れており、
-# 「起動ログは正常なのに誰も繋がらない」状態になる (ADR-0003)
 
 cd ~/whill_platform
 source scripts/env.sh
-
-# ROS
 (cd ros && colcon build --symlink-install)
-
-# CLI / stackd
 (cd services && uv sync)
-
-# Web
-(cd web && pnpm install && pnpm exec playwright install chromium)
+(cd web && pnpm install && pnpm exec playwright install chromium && pnpm build)
 ```
 
-## 毎回
+- `colcon build` が `whill_bringup` / `whill_msgs` の override を警告するのは想定どおり。
+  既存スタックにも同名パッケージがあり、`env.sh` が本リポ側を後に source して優先させる
+- `whill` / `whill-stackd` は `scripts/bin/` の入口（中身は `uv run`）。`env.sh` が PATH に入れる。
+  `services/.venv/bin` は PATH に入れない（venv の python3 が ROS の python3 を隠す）
+
+### gateway のトークン
+
+gateway と stackd は `WHILL_GATEWAY_TOKEN`（8 文字以上）が無いと起動しない。
+ファイルに 1 回だけ作り、毎回それを読む（毎回作ると端末に保存したトークンが使えなくなる）。
 
 ```bash
-source ~/whill_platform/scripts/env.sh
-```
-
-これが `WHILL_PLATFORM_CONFIG` / `RMW_IMPLEMENTATION` / `CYCLONEDDS_URI` を設定し、
-ROS → 既存スタック → 本リポの順に source する。**順序を変えないこと**
-（既存リポの install に残る旧 `whill_bringup` が本リポのものを隠す）。
-
-## gateway のトークン
-
-gateway と stackd は **`WHILL_GATEWAY_TOKEN` が無いと起動しない**（無認証で待ち受ける
-状態を作らないため）。8 文字以上。
-
-**トークンはファイルに 1 回だけ作り、毎回それを読む。** 起動のたびに乱数で作ると、
-iPad やブラウザに保存したトークンが毎回使えなくなる。
-
-```bash
-# 初回だけ（自分だけが読める 600 で作る）
 umask 077; mkdir -p ~/.config/whill
 openssl rand -hex 16 > ~/.config/whill/gateway-token
-
-# 画面に入れるときに表示する
-cat ~/.config/whill/gateway-token
 ```
 
-- **このトークンをリポジトリに書かないこと。** `docs/` に資格情報を置かない規約。
-  研究室で共有するなら別の経路で渡す
-- 作り直したら、各端末でも入れ直すことになる（画面は「トークンが違う」と出して入力に戻る）
-- systemd で stackd を動かすときは、同じ値を `/etc/whill/stackd.env` に書く
+- リポジトリに書かない。共有は別経路で
+- 作り直したら各端末で入れ直す
+- systemd で stackd を動かすときは同じ値を `/etc/whill/stackd.env`（600）に書く
 
 ## 起動
 
-**Claude Code とは別のターミナルで、自分で起動する。** 起動したターミナルは閉じずに
-置いておき、止めるときはそのターミナルで **Ctrl-C**。
+Claude Code とは別のターミナルで起動し、止めるときはそのターミナルで Ctrl-C。
 
 ```bash
 cd ~/whill_platform
-source scripts/env.sh                                     # whill が使えるようになる
+source scripts/env.sh
 export WHILL_GATEWAY_TOKEN=$(cat ~/.config/whill/gateway-token)
 whill run --robot cr2-01 --mode mock --gateway
 ```
 
-`wss://0.0.0.0:8765 で待ち受け中` が出たら、ブラウザで `https://localhost:8765/`
-（iPad からは `https://<PC の IP>:8765/`）を開き、トークンを入れる。上部帯が
-「gateway 接続」になれば成功。stackd を起動していなければ「stackd 未接続」は正常。
-
-その他の起動のしかた（`--gateway` を付ければ画面から見られる）:
+`wss://0.0.0.0:8765 で待ち受け中`（TLS 無しなら `ws://`）が出たら `https://localhost:8765/` を開き、
+トークンを入れる。上部帯が「gateway 接続」になれば成功。`whill run` を手で起動しているときの
+「stackd 未接続」は正常。
 
 ```bash
-# camera も上げる (CPU を食う)
-whill run --robot cr2-01 --mode mock --gateway --camera
-
-# preset を当てる
-whill run --robot cr2-01 --mode mock --gateway --preset cautious
-
-# bag 再生 (Phase 4)
+whill run --robot cr2-01 --mode mock --gateway --camera            # camera も上げる（CPU を食う）
+whill run --robot cr2-01 --mode mock --gateway --preset cautious   # preset を当てる
 whill run --robot cr2-01 --mode replay --gateway --bag bags/2026-07-31-campus
-
-# Gazebo のシミュレーション（下の「sim」を先に読むこと）
-whill run --robot cr2-01 --mode sim --gateway
-
-# 実機（**実機で起動したことがない。docs/phase7-checklist.md の段 0 を見ながら**）
-whill run --robot cr2-01 --mode real --gateway
-
-# 起動せずコマンドだけ見る
-whill run --robot cr2-01 --mode mock --dry-run
+whill run --robot cr2-01 --mode sim --gateway                      # 「sim」節を先に読む
+whill run --robot cr2-01 --mode real --gateway                     # 実機未起動。docs/phase7-checklist.md 段 0 に従う
+whill run --robot cr2-01 --mode mock --dry-run                     # 起動せずコマンドだけ見る
 ```
 
-- `whill: コマンドが見つかりません` と出たら、そのターミナルで `source scripts/env.sh` をしていない
-- 前のスタックが残っていると gateway が 8765 番を取れず、スタックごと失敗して止まる（#49）。
-  前のターミナルで Ctrl-C したか確かめる
+前のスタックが残っていると gateway が 8765 を取れず、スタックごと失敗して止まる。
 
-## sim（Gazebo Classic 11）
+## Web 画面
 
-mock の合成データではなく、**物理で動く車体と光線の当たる LiDAR** で上位を試したいときに使う。
-廊下は mock の地図と同じ寸法（22 m × 7 m、障害物 1 個）。
+gateway が `web/dist/` を 8765 で配る。運用では開発サーバを起動しない。
 
-### 初回だけ
+- 他PC / tablet からは `https://<実機PC>:8765/`（TLS 未設定なら `http://`）
+- 画面のコードを変えたら `(cd web && pnpm build)`。未ビルドだと `/` がビルドを案内する
+- 配信元は `WHILL_WEB_ROOT` で変えられる
+
+画面のコードを触るときは開発サーバを使う:
 
 ```bash
-sudo apt-get install -y ros-humble-gazebo-ros-pkgs   # Gazebo Classic 11 と gazebo_ros
-python3 scripts/make_mock_map.py                     # mock と共通の廊下地図（gitignore）
-(cd ros && colcon build --symlink-install --packages-select whill_bringup)
+(cd web && pnpm dev)          # 0.0.0.0:5173。TLS 設定済みなら https
 ```
-
-### 起動と確認
-
-```bash
-whill run --robot cr2-01 --mode sim --gateway
-whill doctor --robot cr2-01 --mode sim     # 5 件（odom / 点群 / scan / imu / clock）
-```
-
-- 起動ログに `sim: ... LiDAR=GPU（NVIDIA）` と出れば GPU で動いている。`CPU` なら下の表を見る
-- 画面は gzclient を出さない（3D は Foxglove に委譲。設計原則 2）。俯瞰図と配車で動かす
-- 配車の地点は mock と同じ（west / center / east）。east まで約 22 秒
-
-### mock・実機との違い
-
-| | 実機 | mock | sim |
-|---|---|---|---|
-| 車体 | WHILL CR2 | 速度を積算するだけ | 差動二輪の箱（**寸法は近似**） |
-| LiDAR | VLP-16 | 合成の廊下 | Gazebo の光線（16 リング × 900） |
-| `/scan` | 点群 → 地面除去 → `pointcloud_to_laserscan` | mock が直接出す | 点群 → `pointcloud_to_laserscan`（**地面除去は無し**。床が平らなため） |
-| map → odom | scan-to-map localizer | identity 固定 | identity 固定（**odom は滑るとずれていく**） |
-| バッテリー等 | 出る | 出る | **出ない** |
-| 時刻 | 実時間 | 実時間 | `/clock`（100 Hz） |
-
-### GPU
-
-この PC は Intel 内蔵 + NVIDIA のハイブリッドで、`prime-select` が `on-demand`。
-**何も指定しないと Gazebo は Intel 側で描画する。** launch が自動で PRIME の指定を付ける
-（NVIDIA のモジュールが載っていて、`DISPLAY` があるとき）。
-
-- `nvidia-smi` のプロセス一覧に `gzserver` が出れば NVIDIA で動いている
-- `WHILL_SIM_GPU=off` を付けて起動すると GPU を使わない（CPU の LiDAR。切り分け用）
-- `nvidia-smi` が `Driver/library version mismatch` を出すときは、ドライバ更新後に再起動していない。再起動する
-
-## DDS の設定（CycloneDDS）
-
-`scripts/env.sh` が `config/cyclonedds-runtime.xml` を指す（K2。以前は既存リポの
-ファイルを使っていた）。**既定は loopback だけ**を使う。ROS は実機PC内で閉じる
-（設計原則 1）ので、これで足りる。
-
-```bash
-# いま何を使っているか
-echo $CYCLONEDDS_URI
-
-# 実際に選ばれた NIC を見る（config の行を足して起動する）
-CYCLONEDDS_URI="$CYCLONEDDS_URI,<Tracing><Verbosity>config</Verbosity><OutputFile>stderr</OutputFile></Tracing>"   ros2 topic list 2>&1 | grep "selected interfaces"
-```
-
-- **LiDAR の有線 NIC も DDS に使うとき**は名前を渡す（MAC 由来なので、ドックや
-  アダプタを替えると変わる。設定ファイルに焼き込まない）:
-
-  ```bash
-  export WHILL_DDS_INTERFACE=enx00e04c680ec9     # ip -brief link show で確認
-  ```
-
-- **設定を変えたら `ros2 daemon stop`。** daemon はドメインごとに常駐し、古い設定の
-  まま残る。`ros2 topic list` や `whill doctor` が「トピックが見えない」と嘘をつく
-  （実測で踏んだ。`docs/measurements/2026-09-19-dds-config.md`）
-- 手元の単体構成では、設定を変えても discovery も大きなメッセージも差が出なかった。
-  効いてくるのは実機側（Wi-Fi・テザリングの NIC 併存、実 LiDAR）
-
-## stackd（他PC から起動・停止する）
-
-実機PC に ssh せずにスタックを操作するための常駐サービス。
-
-```bash
-# 実機PC 側で常駐させる
-export WHILL_GATEWAY_TOKEN=$(openssl rand -hex 16)
-uv run --project ~/whill_platform/services whill-stackd
-
-# 操作側（同じトークンを export しておく）
-whill stack status
-whill stack start --mode mock --follow 25
-whill stack logs --limit 50 --follow 30
-whill stack restart --mode mock
-whill stack stop
-
-# 別PC から
-whill stack status --url ws://192.168.1.20:8770
-```
-
-停止はプロセスグループごと落とす（SIGINT → SIGTERM → SIGKILL）。**親が
-終了しただけでは「停止した」と返さない**。`ros2 launch` の子は SIGINT を
-取りこぼすことがあり、孤児が残ると次の起動と喧嘩するため。
-
-systemd ユニットは `services/whill_stackd/whill-stackd.service`。
-**`enable` は実機復帰後**（実機なしで enable すると「動いているつもり」になる）。
-トークンはユニット本体ではなく `/etc/whill/stackd.env`（600）に置くこと。
 
 ## 確認
 
 ```bash
-# 宣言トピックが全部出ているか (Phase 0 の受け入れ判定)
-whill doctor --robot cr2-01 --mode mock
+whill doctor --robot cr2-01 --mode mock     # 宣言トピックが揃っているか
+whill topics --mode mock                    # 出るはずのトピック（起動不要）
+whill robots                                # 個体一覧と TF の採寸状況
 
-# gateway に繋いでフレームを覗く (Phase 2 の受け入れ判定)
-# ブラウザを開かずに「costmap と pose が届く」ことを確かめられる。
-# UI のバグと gateway のバグを切り分けるときにも使う。
+# gateway のフレームを覗く（UI と gateway の切り分け）
 whill tap --seconds 8
 whill tap --seconds 5 --stream tf --stream diagnostics --verbose
-#   tf の行は「止まった辺」と「来ていない辺」だけ名前を出す (#51)。
-#   例: tf 5 フレーム 止まり=['map->odom:crit(4.36s)'] 無い=['base_link->imu_link']
-#   健全なら「tf 5 フレーム」だけ。
-whill tap --host 192.168.1.20 --seconds 5     # 別PC の gateway へ
-
-# パラメータを WebSocket 経由で変えてみる (受理/拒否の確認)
-whill tap --seconds 3 --set 'controller_server.FollowPath.min_lookahead_dist=0.75' -v
-whill tap --seconds 3 --apply-preset cautious -v
-
-# 変更ログ (受理も拒否も残る)
-ros2 topic echo /whill/param_changes
-
-# 手動操作とハートビート断の確認
-# --then-silent で「指令を止めたまま接続だけ維持する」状況を作れる
-whill manual --vx 0.25 --seconds 3 --then-silent 4
-ros2 topic echo /cmd_vel_teleop          # 別ターミナル
-
-# E-stop (作動すると Nav2 の goal も取り消される。解除しても自律走行は再開しない)
-whill manual --seconds 0 --estop
-
-# 個体一覧と TF の採寸状況
-whill robots
+whill tap --host 192.168.1.20 --seconds 5
 
 # パラメータ
 whill params list --robot cr2-01
 whill params list --live
 whill params show controller_server.FollowPath.min_lookahead_dist
+whill params validate                       # config/ のスキーマ検証
+whill params probe                          # live パラメータの即時反映（試した値は戻す）
+whill tap --seconds 3 --set 'controller_server.FollowPath.min_lookahead_dist=0.75' -v
+whill tap --seconds 3 --apply-preset cautious -v
+whill latency --repeats 20                  # スライダー → Nav2 反映（基準 200 ms）
+ros2 topic echo /whill/param_changes        # 受理・拒否の記録
 
-# config/ のスキーマ検証
-whill params validate
+# Nav2 params の生成が既存スタックと一致するか（差分ゼロで exit 0）
+ros2 run whill_params generate_nav2_params --robot cr2-01 --check
+ros2 run whill_params generate_nav2_params --robot cr2-01 --preset cautious -o /tmp/nav2.yaml
 
-# 起動中のスタックで live パラメータが本当に即時反映されるか試す
-# (試した値は元に戻す)
-whill params probe
-whill params probe --key controller_server.FollowPath.min_lookahead_dist
+# 手動操作・ハートビート断・E-stop
+whill manual --vx 0.25 --seconds 3 --then-silent 4
+whill manual --seconds 0 --estop
 
-# スライダー → Nav2 反映の所要時間を測る (受け入れ条件 200 ms)
-# 内訳 (network / validate / service) も出るので、超えたときにどこを
-# 直せばよいかが分かる
-whill latency --repeats 20
-
-# 仮想障害物を置く / 消す (WebSocket 経由。俯瞰図からの操作は Phase 4 の後続 issue)
-#   action: replace / add / remove / clear
-#   frame_id は map 固定、半径は 0.05〜5.0 m、個数は 200 まで
-#   **永続化しない。** gateway を再起動すると消える (docs/open-questions.md Q5)
-
-# ROS 側から直接置く場合
+# 仮想障害物（map 固定、半径 0.05〜5.0 m、200 個まで、永続化しない）
 ros2 topic pub --once /whill/virtual_obstacles whill_msgs/msg/VirtualObstacleArray \
   '{header: {frame_id: map}, obstacles: [{id: t1, frame_id: map, center: {x: 4.0, y: 0.0}, radius: 1.0}]}'
 ros2 topic pub --once /whill/virtual_obstacles whill_msgs/msg/VirtualObstacleArray \
-  '{header: {frame_id: map}, obstacles: []}'    # 全消去
-
-# registry から生成した Nav2 params が既存スタックと一致するか
-# (Phase 1 の受け入れ条件。差分ゼロなら exit 0)
-ros2 run whill_params generate_nav2_params --robot cr2-01 --check
-
-# preset を当てたものを書き出して中身を見る
-ros2 run whill_params generate_nav2_params --robot cr2-01 --preset cautious -o /tmp/nav2.yaml
-
-# 起動せずに「出るはずのトピック」を見る
-whill topics --mode mock
+  '{header: {frame_id: map}, obstacles: []}'
 ```
 
-## Web コンソールを開く
-
-**現場（運用）では開発サーバを起動しない。** 画面は gateway が 8765 番で配る（#56）。
+## stackd（他PC から起動・停止する）
 
 ```bash
-# 実機PC 側（画面のビルドは、画面のコードを変えたときだけ）
-(cd web && pnpm build)        # web/dist/ にできる。git には入れない
-whill run --robot cr2-01 --mode mock --gateway
+# 実機PC 側
+export WHILL_GATEWAY_TOKEN=$(cat ~/.config/whill/gateway-token)
+whill-stackd
 
-# 他PC / tablet から
-#   https://<実機PC>:8765/     （研究室 CA が未発行なら http://）
+# 操作側（同じトークンを export）
+whill stack status
+whill stack start --mode mock --follow 25
+whill stack logs --limit 50 --follow 30
+whill stack restart --mode mock
+whill stack stop
+whill stack status --url ws://192.168.1.20:8770
 ```
 
-- 画面と WebSocket が同じ `https://<実機PC>:8765` になる。証明書も 1 枚で済む
-- 配る場所は `$WHILL_PLATFORM_ROOT/web/dist`（`WHILL_WEB_ROOT` で変えられる）。
-  systemd で stackd を動かす場合、ユニットは `WHILL_PLATFORM_ROOT` を設定済み。
-  TLS の変数（`WHILL_TLS_*`）は `/etc/whill/stackd.env` に書く
-- **ビルドしていないと**、`/` は「画面がまだビルドされていない」と `pnpm build` を案内する。
-  gateway 自体は動いていて、WebSocket（CLI など）は使える
-- 画面のコードを変えたのに tablet が古い画面のままなら、`pnpm build` をし直したか確かめる
-  （`index.html` はキャッシュしない設定にしてある）
+- 停止はプロセスグループごと SIGINT → SIGTERM → SIGKILL。子が全部消えるまで「停止」と返さない
+- systemd ユニットは `services/whill_stackd/whill-stackd.service`。`enable` は実機復帰後
 
-**開発中（画面のコードを触るとき）** は、変更がすぐ反映される開発サーバを使う:
+## sim（Gazebo Classic 11）
 
 ```bash
-(cd web && pnpm dev)          # 0.0.0.0:5173。研究室 CA を発行済みなら https
-#   https://<lab-pc>:5173
+# 初回
+sudo apt-get install -y ros-humble-gazebo-ros-pkgs
+python3 scripts/make_mock_map.py
+(cd ros && colcon build --symlink-install --packages-select whill_bringup)
+
+whill run --robot cr2-01 --mode sim --gateway
+whill doctor --robot cr2-01 --mode sim     # odom / 点群 / scan / imu / clock
 ```
 
-## 画面の見方（上部帯 / tf / カメラ）
+- 廊下は mock と同寸（22 m × 7 m、障害物 1 個）。配車地点も同じ（west / center / east）
+- gzclient は出さない（3D は Foxglove）
+- 起動ログに `LiDAR=GPU（NVIDIA）` が出れば GPU。`WHILL_SIM_GPU=off` で CPU に切り替え
 
-### 上部帯の Nav2 の表示（#67）
-
-| 表示 | 色 | 意味 | どうするか |
+| | 実機 | mock | sim |
 |---|---|---|---|
-| Nav2 動作中 | 緑 | Nav2 一式が activate されている | 正常 |
-| Nav2 停止中 | 黄 | lifecycle manager は居るが activate されていない | `ros2 service call /lifecycle_manager_navigation/manage_nodes nav2_msgs/srv/ManageLifecycleNodes "{command: 0}"`（0 = STARTUP）か、起動し直す |
-| Nav2 起動中 | 黄 | 起動から 20 秒以内でまだ応答が無い | 待つ。20 秒を過ぎると「応答なし」になる |
-| Nav2 応答なし | 赤 | 上がっているはずなのに答えない | **これが本当の異常。** 起動ログを見る。`ros2 node list` に Nav2 が居るか |
-| Nav2 起動しない | 無色 | このモードは Nav2 を上げない（replay） | 正常。bag の再生中はこれ |
+| 車体 | WHILL CR2 | 速度の積算 | 差動二輪の箱（寸法は近似） |
+| LiDAR | VLP-16 | 合成の廊下 | Gazebo の光線（16 × 900） |
+| `/scan` | 点群 → 地面除去 → laserscan | mock が直接出す | 点群 → laserscan（地面除去なし） |
+| map → odom | scan-to-map localizer | identity | identity（odom は滑るとずれる） |
+| バッテリー等 | 出る | 出る | 出ない |
+| 時刻 | 実時間 | 実時間 | `/clock` |
 
-### tf パネル（dev レイアウト、#51）
+## DDS（CycloneDDS）
 
-TF の途絶は Nav2 が止まる一番多い原因で、**止まっても木の形は変わらない**。
-そこで辺ごとに「最後に届いてから何秒たったか」を出す。
-
-- **異常（赤）**: `map → odom` か `odom → base_link` が止まった／来ていない。
-  前者は自分の位置が分からない状態、後者は EKF が止まっている
-- **注意（黄）**: 遅れている、木が 2 つに分かれている、設定と実機で親が違う
-- **静的**: `/tf_static` の辺。更新されないのが正常
-- 閾値は `config/robots/cr2-base.yaml` の `tf.dynamic`（代表 bag の実測から決めた。
-  `docs/measurements/2026-09-14-tf-intervals.md`）
-- ops レイアウトでは木を出さない。**止まったときだけ 1 行**出る
-
-### カメラ（#52 / #53 / ADR-0007）
+`env.sh` が `config/cyclonedds-runtime.xml` を指す。既定は loopback のみ（ROS は実機PC内で閉じる）。
 
 ```bash
-whill run --robot cr2-01 --mode mock --gateway --camera   # mock は --camera で上がる
+echo $CYCLONEDDS_URI
+export WHILL_DDS_INTERFACE=<NIC 名>     # LiDAR の有線 NIC も使うとき。ip -brief link show で確認
+ros2 daemon stop                        # 設定を変えたら必ず。古い daemon がトピックを隠す
 ```
-
-- **画像はパネルを開いているあいだだけ流れる。** 閉じれば帯域を使わない
-- 「最新（実測 6.2 Hz）」の数字は**実測**。設定値ではないので、
-  「6 Hz にしたのに 1 Hz しか出ていない」が見える
-- 画像が古くなると薄くなり「n 秒前」と出る。**止まった絵を最新に見せない**
-- 露出・解像度・配信レートは**パラメータパネルで変える**（パネル内のリンクから飛べる）。
-  カメラ専用の操作画面は作っていない
-
-| パラメータ | 何 | 備考 |
-|---|---|---|
-| `camera.rgb_camera.color_profile` | `幅,高さ,FPS` | `live: false`。実機での再起動の要否が未確認 |
-| `camera.rgb_camera.enable_auto_exposure` | 自動露出 | 屋外の逆光で切る |
-| `camera.rgb_camera.exposure` | 露出時間 [us] | 自動露出が true なら効かない。範囲は暫定 |
-| `whill_gateway.image_publish_rate` | 配信レート [Hz] | 既定 6。**通信量はここで決まる** |
-
-**通信量の目安**（mock 実測）: 6 Hz で 1.07 Mbit/s（10 分で約 80 MB）、1 Hz で 0.31 Mbit/s。
-テザリングで見るときは、見ないあいだパネルを閉じるかレートを下げる。
 
 ## iPad から開く（https / wss）
 
-**iPad の Safari / Chrome は `http://` を `https://` に上げてしまい、http の画面を
-開けない**（`ERR_SSL_PROTOCOL_ERROR`。2026-09-14 に実測）。研究室専用の認証局（CA）を
-作り、iPad に 1 回だけ信頼させる。経緯は #55。
-
-### ネットワーク
-
-**PC をアクセスポイントにしない。** PC のインターネット（Claude Code・GitHub・apt）が
-止まる。PC と iPad を同じネットワークにつなぐ。
-
-- iPhone のインターネット共有に PC と iPad の両方をつなぐ（2026-09-14 に確認。
-  PC は `172.20.10.2`、iPad から PC に届き、PC のインターネットも生きていた）
-- 大学の uu-w は端末どうしが通信できず使えなかった（既存スタックの記録）
-
-### PC 側（CA は 1 回だけ、サーバ証明書は IP が変わったら）
+iPad のブラウザは http を開けないため、研究室 CA を作って iPad に信頼させる。
+PC はアクセスポイントにせず、PC と iPad を同じネットワーク（iPhone のインターネット共有など）につなぐ。
 
 ```bash
-scripts/tls/make-ca.sh             # 1 回だけ。~/.config/whill/tls/ に作る。上書きはしない
-scripts/tls/make-server-cert.sh    # 名前・テザリングの範囲・いまの IP を入れて発行
-scripts/tls/make-server-cert.sh 192.168.1.20   # 入っていないアドレスを足す
-
-source scripts/env.sh              # 発行済みなら WHILL_TLS_CERT / KEY / CA が入る
+scripts/tls/make-ca.sh                         # 1 回だけ。~/.config/whill/tls/ に作る
+scripts/tls/make-server-cert.sh                # IP が変わったら再発行（397 日で失効）
+scripts/tls/make-server-cert.sh 192.168.1.20   # アドレスを足す
+source scripts/env.sh                          # WHILL_TLS_CERT / KEY / CA が入る
 ```
 
-- **`~/.config/whill/tls/ca.key` を git・クラウド・共有フォルダに置かないこと。**
-  この鍵があれば、CA を信頼した iPad に対して LAN 内のアドレスを偽装できる
-  （公開サイトは Name Constraints で発行できないようにしてある）
-- サーバ証明書は 397 日で切れる。切れたら `make-server-cert.sh` をもう一度
-- 平文で動かしたいときは `WHILL_TLS=off source scripts/env.sh`
-- 片方だけ設定されている・ファイルが読めないときは、gateway / stackd / 開発サーバは
-  **起動しない**（平文に黙って戻らない）
+- `~/.config/whill/tls/ca.key` を git・クラウド・共有フォルダに置かない
+- 平文で動かすときは `WHILL_TLS=off source scripts/env.sh`。証明書が片方だけ・読めないときは起動しない
 
-### iPad 側（端末ごとに 1 回）
+iPad 側（端末ごとに 1 回、この順で）:
 
-**この順番で。** 以前の記録では、逆にすると Safari が拒否した。
+1. PC でスタックを起動する
+2. Safari で `https://<PC の IP>:8765/whill-ca.crt` を開き、プロファイルをダウンロード（Chrome では不可）
+3. 設定 → 一般 → VPN とデバイス管理 → `whill_console lab CA` をインストール
+4. 設定 → 一般 → 情報 → 証明書信頼設定 → `whill_console lab CA` をオン
+5. `https://<PC の IP>:8765/` を開いてトークンを入れる
 
-1. PC でスタックを起動しておく（gateway が CA 証明書を配る）
-2. iPad の **Safari** で `https://<PC の IP>:8765/whill-ca.crt` を開く。
-   「接続はプライベートではありません」が出るので、詳細から開く。
-   **Chrome ではプロファイルを入れられない。** Safari を使う
-3. 「プロファイルがダウンロードされました」→ 設定 → 一般 → VPN とデバイス管理 →
-   `whill_console lab CA` をインストール
-4. 設定 → 一般 → 情報 → **証明書信頼設定** → `whill_console lab CA` をオンにする。
-   **ここを忘れると、インストールしただけでは信頼されない**
-5. `https://<PC の IP>:8765/` を開き、トークンを入れる（開発サーバを動かしているなら
-   `:5173` でもよい）。上部帯が「gateway 接続」
-   「stackd running」になれば成立
+トークンを間違えると理由と一緒に入力画面に戻る。上部帯の「トークンを消す」は E-STOP も届かなくなるので走行中は使わない。
 
-回避のために Chrome の「常に安全な接続を使用する」をオフにしていたら、オンに戻すこと。
-
-**トークンを間違えると**、gateway に拒否された理由（「トークンが違う」）と一緒に入力画面に戻る。保存していたトークンは消えるので、そのまま入れ直せばよい（#58）。32 文字を打つときは「入力を表示する」で目で確かめ、文字数を見る。4 文字ずつ区切って読んでも、空白は自動で落とす:
-`fold -w4 <トークンのファイル> | paste -sd' '`
-
-共有端末で使い終わったときや、gateway のトークンを作り直したときは、上部帯の「トークンを消す」で入力画面に戻す。**消すとその端末から E-STOP も届かなくなる**ので、走行中は使わない。
-
-### 確かめたこと・確かめていないこと
-
-- **確認済み（2026-09-14）**: iPad の Safari で、上の手順のあと https / wss で繋がる。
-  開発サーバ（`:5173`）と、gateway が配る画面（`:8765/`）の両方
-- iPad の Chrome で開けるか
-- `https://<hostname>.local:8765/` の名前で開けるか（証明書には入れてある）
-- iPad が CA の Name Constraints を守るか
-
-俯瞰図の操作:
-
-| 操作 | 効果 |
-|---|---|
-| ドラッグ | 平行移動（追従中に動かすと追従が切れる） |
-| ホイール | ズーム |
-| ダブルクリック | その点を中心に置く |
-| 車体追従 | 車体を画面中央に保つ。**dev の初期値は OFF** |
-| 進行方向上 | 車体の向きを上にする。**dev の初期値は map 固定** |
-
-仮想障害物:
-
-| 操作 | 効果 |
-|---|---|
-| 「仮想障害物を置く」を入れる | 配置モード。**入れないとクリックで置かれない**（地図を動かすつもりのクリックで生えるのを防ぐ） |
-| 配置モード中にクリック | その位置に置く。既にある円をクリックすると消える |
-| 半径 | 配置モード中のスライダー。0.05〜5.0 m |
-| 全消去 | 置いてあるときだけ出る |
-
-**点線のマゼンタの円**で描かれる。実障害物（costmap の赤）や LiDAR（橙）とは
-色も線種も変えてある — 色だけだと、色覚特性や屋外の明るいタブレットで
-区別が付かなくなる。
-
-**個数は常に表示される。** 置いたまま忘れて「なぜ経路が変か」になるのを防ぐため。
-gateway を再起動すると消える（永続化しない。`docs/open-questions.md` Q5）。
-
-costmap の更新が 5 秒途絶えると薄く描かれる。「最新のように見える古い地図」を
-作らないため。
+## 画面の見方
 
 上部帯:
 
 | 表示 | 意味 |
 |---|---|
-| 遅延 | gateway との**往復**。`status` の時刻との差ではない（ROS とブラウザの時計は同期していないし、replay では ROS 側が実時刻ですらない） |
-| stackd | 別ポート 8770。`whill run` を手で叩く運用なら「未接続」で正常 |
-| E-STOP | **gateway 未接続では押せない。** 押しても届かないものを押せるように見せない |
+| Nav2 動作中（緑） | 正常 |
+| Nav2 停止中（黄） | 未 activate。`ros2 service call /lifecycle_manager_navigation/manage_nodes nav2_msgs/srv/ManageLifecycleNodes "{command: 0}"` か再起動 |
+| Nav2 起動中（黄） | 起動 20 秒以内。待つ |
+| Nav2 応答なし（赤） | 異常。起動ログと `ros2 node list` を見る |
+| Nav2 起動しない（無色） | replay では正常 |
+| 遅延 | gateway との往復時間 |
+| E-STOP | gateway 未接続では押せない。解除しても走行は再開しない（goal を取り消しているため、再度ゴールを与える） |
 
-E-stop を押すと帯が赤くなり、全クライアントの画面に反映される。
-**解除には確認が入る** — 解除は「止めるのをやめる」であって「再開する」ではなく、
-gateway は E-stop 時に Nav2 の goal を取り消しているので、走らせるには
-改めてゴールを与える必要がある。
-
-パラメータパネル:
-
-| 表示 | 意味 |
-|---|---|
-| `live` | そのまま操作できる |
-| `restart` | ノードの再起動が要る。**操作できない**（送っても gateway が拒否する） |
-| `caution` | 変更が挙動に効く |
-| `locked` | `locked_while_moving`。走行中は操作できない |
-
-パラメータ名にカーソルを合わせると、値の由来（なぜその値なのか）が出る。
-**変更が拒否されると理由が変更ログに残り、入力欄は実際の値に戻る。**
-
-`registry と実ノードの値がずれている` と出たら、誰かが `ros2 param set` で
-直接変えたか、生成した params が実ノードに届いていない。
-
-初回はトークンの入力を求められる。実機PC の `WHILL_GATEWAY_TOKEN` と同じ値を
-入れる。**URL には載らない**（履歴・プロキシログに残るため）。ブラウザの
-localStorage に保存される。
-
-gateway が落ちても自動で繋ぎ直す（指数バックオフ、上限 10 秒）。ただし
-**認証に失敗したときは再試行しない** — トークンが違うまま叩き続けても直らず、
-原因が画面から消えるだけなので。
-
-## GitHub の運用（PR・ラベル・レビュー）
-
-- **PR の本文はテンプレートから始まる**（`.github/pull_request_template.md`）。
-  目的 / 変更点 / 判断したこと / 検証方法 / スクリーンショット / 実機検証待ち。
-  該当しない項目は消さずに「なし」と書く
-- **ラベルは自動で付く**（`.github/workflows/pr-labels.yml`）
-  - `type:*`: ブランチ名の接頭辞（`feat/` `fix/` `docs/` `chore/` `test/`）
-  - `area:*`: 変更したファイル（`.github/labeler.yml`）
-  - `phase:*` `blocked:*` `needs:*`: 本文の `Closes #N` の issue からコピー
-  - 付けるだけで外さない。手で付けたラベルは残る
-- **マージしたブランチは GitHub 上で自動で消える**（リポジトリ設定）。手元のブランチは
-  `git fetch --prune` で追随する
-- **Actions の版は Dependabot が月に 1 回まとめて上げる**（`.github/dependabot.yml`）
-
-### レビューを依頼する（任意、自分のアカウントで）
-
-```bash
-scripts/request-review.sh <PR 番号> copilot   # gh pr edit --add-reviewer @copilot
-scripts/request-review.sh <PR 番号> devin     # PR に /devin review とコメント
-```
-
-**自動では回さない。** どちらも依頼した人のプランや利用枠を消費し、CI の bot からは
-あなたのプランを使えないため。前提（2026-09 時点）:
-
-- Copilot: **Copilot Free には含まれない**。Copilot Student（認証済みの学生は無料）か
-  Pro 以上が要る。2026-06 から GitHub Actions の分数も消費する
-- Devin: Devin のアカウントと、この private repo への Devin の GitHub App が要る。
-  レビューは ACU を消費する
+- **tf パネル**: 辺ごとの最終受信からの経過。赤は `map → odom`（自己位置）か `odom → base_link`（EKF）の停止。閾値は `config/robots/cr2-base.yaml` の `tf.dynamic`（根拠は `docs/measurements/2026-09-14-tf-intervals.md`）
+- **カメラ**: パネルを開いている間だけ流れる。表示の Hz は実測。古い画像は薄くなる。
+  露出・解像度・配信レート（`whill_gateway.image_publish_rate`、既定 6 Hz ≒ 1 Mbit/s）はパラメータパネルで変える
+- **俯瞰図**: ドラッグで移動、ホイールでズーム、ダブルクリックで中心。costmap が 5 秒途絶えると薄くなる
+- **仮想障害物**: 「仮想障害物を置く」を入れてからクリックで配置、既存の円をクリックで削除。マゼンタの点線円。個数は常時表示
+- **パラメータパネル**: `live` は操作可、`restart` は再起動が要るので操作不可、`locked` は走行中は操作不可。名前にカーソルで値の由来が出る
 
 ## テスト
 
 ```bash
-./scripts/test.sh            # 全部
-./scripts/test.sh services   # config / CLI の pytest
-./scripts/test.sh ros        # registry / descriptors の pytest
-./scripts/test.sh web        # vitest + Playwright スクリーンショット
+./scripts/test.sh            # 全部（CI と同じ）
+./scripts/test.sh services
+./scripts/test.sh ros
+./scripts/test.sh web        # スクリーンショットは docs/screenshots/
+./scripts/live-test.sh       # 実 gateway に繋ぐ live テスト（mock + replay、約 2 分）
+./scripts/live-test.sh mock
 ```
 
-スクリーンショットは `docs/screenshots/` に出る。UI を変えた PR には必ず添付する。
-CI も同じものを撮って artifact `screenshots` に上げるので、そこから拾ってもよい。
+- UI を変えた PR にはスクリーンショットを添付する
+- pnpm の版は `web/package.json` の `packageManager` で固定。外すと CI とローカルがずれる
+- CI の `ros` ジョブには既存スタックが無く、それに依存するテストは skip される（理由はログに出る）
+- live テストは 8765 が塞がっていると何もせず終わる。失敗時のログは `/tmp/whill-live-test/`。
+  `pnpm exec playwright test` 単体では live は skip される（`WHILL_LIVE=1` が要る）
 
-`scripts/test.sh` は CI (`.github/workflows/ci.yml`) と同じ内容を走らせる。
+## 実機で測る（Phase 7）
 
-**pnpm の版は `web/package.json` の `packageManager` で固定してある。**
-外すと CI が最新版を拾い、ローカルで再現できない失敗が出る（実際に踏んだ:
-新しい供給網ポリシーが「24 時間以内に公開された依存」を弾いた）。
-ローカルで緑なのに CI で赤い、という状態を作らないため、片方に検査を足したら
-もう片方にも足すこと。
-
-CI は 3 ジョブに分かれる。壊れた場所が名前で分かるようにしてある:
-
-| ジョブ | 内容 | ROS |
-|---|---|---|
-| `services` | config/ の検証、CLI のテスト、ruff | 不要 |
-| `web` | 型検査、vitest、Playwright スクリーンショット | 不要 |
-| `ros` | registry、ParameterDescriptor、Nav2 params 生成 | `ros:humble-ros-base` コンテナ |
-
-`ros` ジョブには既存スタック (`whill_lab0_ros2`) が無いので、その
-`nav2_params.yaml` に依存するテストは skip される。`-rs` を付けてあるので
-skip の理由がログに出る（全部 skip されて緑、を見逃さないため）。
-テンプレートの場所は `WHILL_NAV2_TEMPLATE` で差し替えられる。
-
-## 実機で測る（Phase 7 の段 0〜2）
-
-**実機に触る日は `docs/phase7-checklist.md`（点検票）を見ながら進める。**
-なぜその順かは `docs/phase7-plan.md`。ここにあるのは道具の使い方（#78）。
+実機の日は `docs/phase7-checklist.md` に従う。
 
 ```bash
-# 段 0: テレメトリを記録して、宣言（cr2-base.yaml）との食い違いを名指しする
-whill measure telemetry --seconds 60 --mode real
-#   出力はそのまま docs/measurements/ に貼れる表
-#   「来ていない」= トピック名か publish、「値が無い」= フィールド名を疑う
-#   宣言と食い違えば終了コード 1
-
-# 段 1: 止まるまでの時間（**車輪を浮かせてから**）
-whill measure stop --repeats 5
-#   E-STOP とハートビート断の 2 通りで、指令がゼロになるまでを測る
-#   ゼロにならない回があれば終了コード 1 → **そこで中止する**
-
-# 段 2: 遅延（既存の道具をそのまま使う）
-whill latency --repeats 20
+whill measure telemetry --seconds 60 --mode real   # 段 0: 宣言との食い違い（あれば exit 1）
+whill measure stop --repeats 5                     # 段 1: 車輪を浮かせて。ゼロにならない回があれば中止
+whill latency --repeats 20                         # 段 2
 ```
 
-mock での基準線: E-STOP 中央 30 ms、ハートビート断 430 ms
-（`docs/measurements/2026-09-19-stop-time-mock.md`）。**実機の値ではない。**
+mock の基準: E-STOP 中央 30 ms、ハートビート断 430 ms（実機の値ではない）。
 
-## live テスト（実 gateway に繋いで確かめる）
+## GitHub の運用
 
-`web/tests/live*.spec.ts` の **10 件**は gateway が要るので**既定で skip** され、CI でも
-走らない。手順が長いと誰も走らせなくなるので、起動から停止まで 1 本にまとめてある。
+- PR 本文は `.github/pull_request_template.md` から書く。該当しない項目は「なし」
+- ラベルはブランチ接頭辞・変更ファイル・`Closes #N` の issue から自動で付く
+- マージ済みブランチは GitHub 側で自動削除。手元は `git fetch --prune` のあと消す
+- レビュー依頼は任意: `scripts/request-review.sh <PR> copilot|devin`（依頼者の利用枠を使う）
 
-```bash
-./scripts/live-test.sh          # mock と replay（約 2 分）
-./scripts/live-test.sh mock     # mock だけ
-```
-
-- **8765 が塞がっていたら何もせずに終わる。** 動いているスタックを踏み潰さないため
-- スタックは**平文**で上げる（Playwright の開発サーバは http なので、ブラウザは ws:// で繋ぐ）
-- Nav2 が active になるまで待ってからテストを始める（配車のテストが早すぎて落ちる）
-- 「gateway を落として上げ直すと再接続する」テストだけは、**途中でスタックを再起動**して
-  成立させる（gateway が死ぬと launch ごと止まる設計 — #49）
-- 終わったら自分が起動したものを止め、port が空いたことまで確かめる
-- 失敗したときは `/tmp/whill-live-test/` にログと Playwright の痕跡が残る
-
-`pnpm exec playwright test` だけを打つと live は skip される（`WHILL_LIVE=1` が要る）。
-**「全部 skip で緑」を見逃さないこと。**
-
-## 落ちたとき
-
-| 症状 | 原因と対処 |
-|---|---|
-| `file 'bringup_launch.py' was not found ... whill_lab0_ros2/install/whill_bringup` | source 順が逆。`scripts/env.sh` を使うこと。 |
-| Nav2 が activate せず `not part of the same tree` を繰り返す | `odom -> base_link` を出す EKF が居ない。既存スタック (`whill_localization`) が source されているか確認する。 |
-| `ros2 topic hz /scan` が何も出さない | `/scan` は best-effort QoS。humble の `topic hz` は自動判定しない。`ros2 topic echo --once` を使う。 |
-| pytest が `No module named 'lark'` で落ちる | ROS 製 pytest プラグインの自動 load。`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` を付ける（`scripts/test.sh` は付けている）。 |
-| launch が残骸プロセスを残す | `pkill -INT` は launch の子に確実に伝播しない。`pkill -9 -f whill_mock_drivers` のように子を名指しで落とす。 |
-| `whill params probe` が "Node not found" と言う | registry のノード名と ROS のノード名が違う。`config/params.yaml` の `node_aliases` に実ノード名を書く（costmap は `/local_costmap/local_costmap`）。 |
-| costmap を subscribe しているのに絵が固まったまま | Nav2 は全量を latched で 1 回しか出さない。`/…/costmap_updates` も受けること。ADR-0002 参照。 |
-| `generate_nav2_params --check` が「N 件が反映されていない」で落ちる | registry のキー名がテンプレートの構造と合っていない。Nav2 の costmap は `local_costmap: local_costmap: ros__parameters:` と二重に入れ子になる点に注意。 |
-| gateway が `WHILL_GATEWAY_TOKEN が未設定` で落ちる | 仕様どおり。無認証では起動しない。 |
-| gateway は起動しているのにブラウザから繋がらない | `python3-websockets` が入っていないか確認する。入っていると壊れる（ADR-0003）。`python3-aiohttp` を使うこと。 |
-| `whill tap` で costmap が 1 通も来ない | gateway が全量を取りこぼしている可能性。Nav2 は全量を latched で 1 回しか出さないので、gateway より後に Nav2 を起動し直すと届かない。gateway を再起動する。 |
-| 俯瞰図が最初の 1 枚で固まる | `costmap_update` を受けていない。`whill tap --verbose` で `update` 行が出るか確認する。 |
-| `param_set` が「走行中は変更できない」で拒否される | 仕様どおり。`locked_while_moving` のパラメータは走行中に変えられない。停止してから。 |
-| `param_set` が「再起動が必要」で拒否される | `live: false` のパラメータ。`whill params show <key>` で確認できる。ノードを再起動すること。 |
-| UI の値と実際の Nav2 の値が違う | `params` フレームの `mismatches` を見る。`whill tap --stream params -v` で件数が出る。 |
-| 手動操作が車体に届かない | `ros2 topic info /cmd_vel_teleop` で Subscription count を見る。0 なら twist_mux が居ない。mock では bringup が起動する。 |
-| E-stop を解除しても走り出さない | 仕様どおり。E-stop は Nav2 の goal を取り消すので、再開には改めてゴールを与えること。 |
-| `whill stack` が「stackd に接続できない」と言う | stackd が起動していない。`uv run --project services whill-stackd`。 |
-| stackd で止めたのにノードが残る | `ros2 node list` で確認する。残るならプロセスグループが作れていない環境。`docs/open-questions.md` に追記して止まること。 |
-| ブラウザに「gateway error: 認証に失敗した」と出る | トークンが違う。localStorage の `whill.gateway.token` を消して入れ直す（devtools か、アプリのトークン入力に戻る）。 |
-| 画面は出るが何も届かない | 上部帯の接続状態を見る。`disconnected` なら gateway が落ちている、`error` なら理由が出ている。 |
-| 仮想障害物を置いても経路が変わらない | `global_costmap.virtual_obstacles_enabled` が true か確認する。層の追加は再起動が要る（live: false）。起動ログに `Using plugin "whill_virtual_obstacles"` が出ているかも見る。 |
-| 消したのに障害物が残る | Nav2 のリカバリでは消えない設計（人が置いたものを勝手に消さない）。空配列を publish すること。 |
-| replay で gateway は動いているのにテレメトリが 1 通も届かない | costmap が大きすぎてブラウザの受信上限を超えている可能性。`whill tap -v` で `1/N に間引き` が出るか見る。`costmap_max_cells` を下げる。 |
-| 俯瞰図の地図が粗い | 大きい地図は間引いて送っている。倍率は俯瞰図の右上に出る。細かいところは local costmap で見る（間引かれない）。 |
-| gateway が `address already in use` で落ちる | 前回のプロセスが残っている。`ss -ltnp \| grep 8765` で PID を見て落とす。 |
-| `mode=real` が `既存スタックが見つからない` で落ちる | 既存リポを source していない。`scripts/env.sh` を使う。 |
-| `mode=real` が `occupancy が見つからない` で落ちる | 個体 yaml の `maps.<default>.occupancy` が実在しない。既存リポのパスを確認する（以前 1 階層ずれていた）。 |
-| sim が `廊下の地図が無い` で落ちる | `python3 scripts/make_mock_map.py` のあと `whill_bringup` をビルドし直す。 |
-| sim の上部帯が「Nav2 応答なし」のまま、tf パネルが `odom -> base_link が来ていない` | 車体が投入されていない。起動ログで `spawn_entity` のエラーを見る。`No module named 'lxml'` なら古い `whill`（venv の python3 を ROS に渡していた。直した）。 |
-| sim の LiDAR が `CPU` と出る | `DISPLAY` が無い（ssh 越しなど）か、NVIDIA のモジュールが載っていない。`nvidia-smi` を見る。 |
-| `ros2 topic list` や `whill doctor` にトピックが出ないのに、実際は publish されている | ROS 2 の daemon が古い設定のまま残っている。`ros2 daemon stop`（K2）。 |
-| `rmw_create_node: failed to create domain` | CycloneDDS の設定で NIC 名が空か、同じ名前が 2 回並んでいる。`WHILL_DDS_INTERFACE` を確認する。 |
-| sim を 2 つ同時に起動すると片方が動かない | Gazebo の master のポート（11345）が衝突する。`GAZEBO_MASTER_URI=http://127.0.0.1:11346` のように変える。 |
-| 上部帯に「Nav2 応答なし」と出る | Nav2 が上がっているはずなのに `lifecycle_manager_navigation/is_active` が答えない。`ros2 node list` で Nav2 のノードが居るか見る。replay なら「起動しない」と出るのが正常（#67）。 |
-| tf パネルが「map → odom が止まっている」 | localizer（実機は scan-to-map、mock は static）が止まっている。bag 再生を一時停止したときも出る（正常）。走行中なら Nav2 が abort する前触れ。 |
-| tf パネルが「… が来ていない」と出る | 宣言（個体 yaml の `tf_static` / `cr2-base.yaml` の `tf.dynamic`）にあるのに届いていない。ノードが上がっていないか、宣言のほうが古い。**宣言と実機が食い違っていたら既存スタックが正。** |
-| カメラの画像が来ない | 既定では起動しない。mock は `--camera`。ドライバパネルの realsense も見る。パネルを閉じていると流れない（仕様）。 |
-| カメラで通信量を使いすぎる | `whill_gateway.image_publish_rate` を下げる（live なので走行中でも変えられる）。見ないときはパネルを閉じる。 |
-| 画像が「実測 1.0 Hz」のまま上がらない | ドライバ側のレートが低い。`camera.rgb_camera.color_profile` の FPS と `cr2-base.yaml` の宣言を見る。 |
-| gateway を手で止めたいのに止まらない | Ctrl+C か `kill -INT`。**`ros2 launch` の pid だけに素の `kill`（SIGTERM）を送らないこと** — launch が即死して子が残る（K13）。stackd と systemd はプロセスグループ全体に送るので問題ない。 |
-
-## bag の変換
+## bag と mock 地図
 
 ```bash
+# bag を MCAP に変換（必要な 1 本だけ。bags/ は gitignore）
 ./scripts/convert_bag_to_mcap.sh \
   ~/whill_lab0_ros2/docs/m7-bench-data/2026-07-31-live-campus/rosbag2_2026_07_31-15_14_51 \
   2026-07-31-campus
-```
 
-`bags/` は gitignore 済み。全 45 GB を変換しないこと。必要になった 1 本だけ。
-
-## mock の地図を変えたとき
-
-`mock_velodyne` の合成廊下と mock 用の占有格子は同じ寸法でなければならない。
-片方だけ変えると「LiDAR は壁を見ているのに地図に無い」状態になる。
-
-```bash
+# mock の地図を変えるときは合成廊下と占有格子を同寸で作り直す
 python3 scripts/make_mock_map.py --half-width 2.5 --length 20.0
 (cd ros && colcon build --symlink-install --packages-select whill_bringup)
 ```
+
+## 落ちたとき
+
+| 症状 | 対処 |
+|---|---|
+| `whill: コマンドが見つかりません` | そのターミナルで `source scripts/env.sh` |
+| `bringup_launch.py was not found ... whill_lab0_ros2/install/whill_bringup` | source 順が逆。`scripts/env.sh` を使う |
+| gateway が `address already in use` | 前のスタックが残っている。`ss -ltnp \| grep 8765` で PID を見て `kill -INT` |
+| gateway が `WHILL_GATEWAY_TOKEN が未設定` | 仕様。トークンを export する |
+| gateway は起動しているのに繋がらない | `python3-websockets` が入っていないか（ADR-0003） |
+| 「gateway error: 認証に失敗した」 | トークン違い。入力画面で入れ直す |
+| Nav2 が `not part of the same tree` を繰り返す | `odom -> base_link` の EKF が居ない。既存スタックが source されているか |
+| `ros2 topic list` / `whill doctor` にトピックが出ない | `ros2 daemon stop` |
+| `ros2 topic hz /scan` が何も出さない | best-effort QoS。`ros2 topic echo --once` を使う |
+| `rmw_create_node: failed to create domain` | `WHILL_DDS_INTERFACE` が空か重複 |
+| pytest が `No module named 'lark'` | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`（`scripts/test.sh` は付けている） |
+| 止めたのにノードが残る | `ros2 launch` の pid に素の `kill` をしない。Ctrl-C か `kill -INT`。残骸は `pkill -9 -f whill_mock_drivers` など子を名指し |
+| `whill params probe` が "Node not found" | `config/params.yaml` の `node_aliases` に実ノード名を書く |
+| `generate_nav2_params --check` が「N 件が反映されていない」 | registry のキーとテンプレートの入れ子が不一致（costmap は二重） |
+| costmap が来ない／最初の 1 枚で固まる | Nav2 は全量を 1 回しか出さない。gateway を再起動し、`whill tap --verbose` で `update` 行を確認（ADR-0002） |
+| replay でテレメトリが届かない | costmap が大きすぎる。`costmap_max_cells` を下げる |
+| `param_set` が拒否される | 走行中の `locked_while_moving`、または `live: false`（`whill params show <key>`） |
+| UI と Nav2 の値が違う | `whill tap --stream params -v` で `mismatches` を見る |
+| 手動操作が届かない | `ros2 topic info /cmd_vel_teleop` の Subscription が 0 なら twist_mux が居ない |
+| 仮想障害物で経路が変わらない | `global_costmap.virtual_obstacles_enabled`（要再起動）と、起動ログの `whill_virtual_obstacles` |
+| 仮想障害物が消えない | 空配列を publish する |
+| `whill stack` が stackd に接続できない | `whill-stackd` を起動する |
+| `mode=real` が `既存スタックが見つからない` / `occupancy が見つからない` | `env.sh` を使う／個体 yaml の `maps.<default>.occupancy` のパス |
+| sim が `廊下の地図が無い` | `python3 scripts/make_mock_map.py` のあと `whill_bringup` を再ビルド |
+| sim で `odom -> base_link が来ていない` | 起動ログの `spawn_entity` エラーを見る |
+| sim の LiDAR が `CPU` | `DISPLAY` が無いか NVIDIA モジュール未ロード。`nvidia-smi` が version mismatch なら再起動 |
+| sim を 2 つ起動すると片方が動かない | `GAZEBO_MASTER_URI=http://127.0.0.1:11346` などで分ける |
+| tf パネルが「map → odom が止まっている」 | localizer 停止。bag の一時停止中は正常 |
+| tf パネルが「… が来ていない」 | ノード未起動か宣言が古い。食い違いは既存スタックが正 |
+| カメラが来ない／レートが低い | mock は `--camera`。パネルを開く。`camera.rgb_camera.color_profile` の FPS を見る |
