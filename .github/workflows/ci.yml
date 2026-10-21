@@ -30,7 +30,7 @@ jobs:
         # setup-uv は v10 のような動く major タグを出していない（v10.1.0 のような
         # 固定のタグだけ）。@v10 と書くと「unable to find version」で落ちた。
         # 上げるのは Dependabot に任せる。
-        uses: astral-sh/setup-uv@v10.1.0
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
           cache-dependency-glob: services/uv.lock
