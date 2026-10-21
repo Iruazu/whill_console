@@ -6,10 +6,7 @@ WHILL CR 専用の Web 開発・運用コンソール。sim・実機・log 再�
 rviz / gazebo の置き換えを狙うが、**3D 表示・bag 解析・プロットは Foxglove /
 Lichtblick に委譲する**。自作するのは 2D 俯瞰・パラメータ・運用・ドライバ監視だけ。
 
-> **リポジトリ名について**: GitHub 上は `Iruazu/whill_console`。実装計画書と
-> ディレクトリ・パッケージ名は `whill_platform` のままだが、`Iruazu/whill_platform`
-> は別プロジェクト（Firebase 配車プラットフォーム）が先に使っていたため、
-> GitHub 側だけ名前を変えた。
+GitHub 上の名前は `Iruazu/whill_console`（`Iruazu/whill_platform` は別プロジェクト）。
 
 対象は WHILL CR ×3（同型）。既存の自律走行スタック
 [`whill_lab0_ros2`](https://github.com/Iruazu/whill_lab0_ros2)（Nav2 / scan-to-map
@@ -17,18 +14,17 @@ localizer / Layer D / Web 配車 UI）は壊さず、launch から include す�
 
 ## 現在地
 
-**Phase 0（足場）完了。** 実機は手元に無いため、すべて mock / bag 再生で検証している。
+Phase 0〜5 と Phase 6 の camera / tf は mock・bag 再生・sim で実装済み。実機（`--mode real`）は未起動で、
+Phase 7（`docs/phase7-checklist.md`）で検証する。フェーズ計画は [`docs/requirements.md`](docs/requirements.md) §4。
 
 ```bash
 source scripts/env.sh
-whill run --robot cr2-01 --mode mock   # 別ターミナルで
-whill doctor --robot cr2-01 --mode mock
+export WHILL_GATEWAY_TOKEN=$(cat ~/.config/whill/gateway-token)
+whill run --robot cr2-01 --mode mock --gateway     # https://localhost:8765/
+whill doctor --robot cr2-01 --mode mock            # 別ターミナルで。宣言トピックとの突き合わせ
 ```
 
-`doctor` は `cr2-base.yaml` の宣言を正として `ros2 topic list` と突き合わせる。
-人が目で見る代わりに機械が判定する。
-
-フェーズ計画は [`docs/requirements.md`](docs/requirements.md) §4。
+初回セットアップとトークンの作り方は runbook。
 
 ## 構成
 

@@ -58,10 +58,9 @@ if [ -f /opt/ros/humble/setup.bash ]; then
   . /opt/ros/humble/setup.bash
 fi
 
-# 既存スタックを先に、本リポを後に source する。順序が逆だと
-# whill_lab0_ros2/install に残っている旧 whill_bringup (M2/M3 期の成果物で
-# src からは既に消えている) が本リポの whill_bringup を隠す。実際に踏んだので
-# この順序は動かさないこと。
+# 既存スタックを先に、本リポを後に source する。両方に whill_bringup / whill_msgs が
+# あり、後に source した側が勝つ。逆にすると既存スタックの whill_bringup が本リポの
+# ものを隠す。colcon の override 警告もこの重複によるもので、想定どおり。
 if [ -f "${HOME}/whill_lab0_ros2/install/setup.bash" ]; then
   # shellcheck disable=SC1091
   . "${HOME}/whill_lab0_ros2/install/setup.bash"
