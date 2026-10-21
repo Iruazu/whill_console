@@ -47,6 +47,12 @@ GitHub 上は **`Iruazu/whill_console`**（private）。ディレクトリ名・
 （Firebase 配車プラットフォーム、2026-05 に作られたもの）が先に使っていたため、
 GitHub 側だけ名前を変えた。両者を混同しないこと。
 
+## いまどう動いているか
+
+**全体の構成・データの流れ・安全の経路は `docs/architecture.md`。**
+図（プロセス、トピック、指令の経路、設定の流れ）を 1 か所にまとめてある。
+設計の理由は `docs/requirements.md` と `docs/adr/`、未決は `docs/open-questions.md`。
+
 ## リポジトリ構成
 
 | ディレクトリ | 中身 | 管理 |
